@@ -1,0 +1,245 @@
+import { ArrowDown, ArrowUp, Copy, Trash2 } from "lucide-react";
+import type { Dispatch } from "react";
+import { EditorAction } from "../model/editorReducer";
+import { DiagramObject, DiagramStyle, lineMetrics } from "../model/diagram";
+
+type Props = {
+  selected: DiagramObject | null;
+  copiedStyle: DiagramStyle | null;
+  dispatch: Dispatch<EditorAction>;
+};
+
+export function Inspector({ selected, copiedStyle, dispatch }: Props) {
+  if (!selected) {
+    return (
+      <aside className="inspector">
+        <h2>Inspector</h2>
+        <p className="muted">No selection</p>
+        {copiedStyle ? (
+          <p className="muted">Style copied. Select a target to paint it.</p>
+        ) : null}
+      </aside>
+    );
+  }
+
+  const isLineLike = selected.type === "line" || selected.type === "arrow";
+  const line = isLineLike ? lineMetrics(selected) : null;
+
+  return (
+    <aside className="inspector">
+      <h2>{selected.type}</h2>
+      <div className="field-grid">
+        <NumberField
+          label="X"
+          value={selected.x}
+          onCommit={(x) => dispatch({ type: "updateSelected", patch: { x } })}
+        />
+        <NumberField
+          label="Y"
+          value={selected.y}
+          onCommit={(y) => dispatch({ type: "updateSelected", patch: { y } })}
+        />
+        <NumberField
+          label="Angle"
+          value={selected.rotation}
+          onCommit={(rotation) =>
+            dispatch({ type: "updateSelected", patch: { rotation } })
+          }
+        />
+        {isLineLike && line ? (
+          <>
+            <NumberField
+              label="X2"
+              value={selected.points[2]}
+              onCommit={(value) => updatePoint(selected, dispatch, 2, value)}
+            />
+            <NumberField
+              label="Y2"
+              value={selected.points[3]}
+              onCommit={(value) => updatePoint(selected, dispatch, 3, value)}
+            />
+            <Readout label="Length" value={line.length.toFixed(1)} />
+            <Readout
+              label="Line angle"
+              value={`${line.angle.toFixed(1)} deg`}
+            />
+          </>
+        ) : "width" in selected && "height" in selected ? (
+          <>
+            <NumberField
+              label="W"
+              value={selected.width}
+              onCommit={(width) =>
+                dispatch({
+                  type: "updateSelected",
+                  patch: { width } as Partial<DiagramObject>,
+                })
+              }
+            />
+            <NumberField
+              label="H"
+              value={selected.height}
+              onCommit={(height) =>
+                dispatch({
+                  type: "updateSelected",
+                  patch: { height } as Partial<DiagramObject>,
+                })
+              }
+            />
+          </>
+        ) : null}
+      </div>
+
+      {selected.type === "text" ? (
+        <label className="field full">
+          Text
+          <input
+            value={selected.text ?? ""}
+            onChange={(event) =>
+              dispatch({ type: "updateText", text: event.target.value })
+            }
+          />
+        </label>
+      ) : null}
+
+      <h3>Style</h3>
+      <div className="field-grid">
+        <ColorField
+          label="Stroke"
+          value={selected.style.stroke}
+          onCommit={(stroke) =>
+            dispatch({ type: "updateSelectedStyle", patch: { stroke } })
+          }
+        />
+        <ColorField
+          label="Fill"
+          value={selected.style.fill}
+          onCommit={(fill) =>
+            dispatch({ type: "updateSelectedStyle", patch: { fill } })
+          }
+        />
+        <NumberField
+          label="Stroke"
+          value={selected.style.strokeWidth}
+          min={0}
+          onCommit={(strokeWidth) =>
+            dispatch({ type: "updateSelectedStyle", patch: { strokeWidth } })
+          }
+        />
+        <NumberField
+          label="Opacity"
+          value={selected.style.opacity}
+          min={0}
+          max={1}
+          step={0.05}
+          onCommit={(opacity) =>
+            dispatch({ type: "updateSelectedStyle", patch: { opacity } })
+          }
+        />
+        {selected.type === "text" ? (
+          <NumberField
+            label="Text"
+            value={selected.style.fontSize ?? 18}
+            min={6}
+            onCommit={(fontSize) =>
+              dispatch({ type: "updateSelectedStyle", patch: { fontSize } })
+            }
+          />
+        ) : null}
+      </div>
+
+      <div className="button-row">
+        <button onClick={() => dispatch({ type: "copySelectedStyle" })}>
+          <Copy size={15} /> Style
+        </button>
+        <button onClick={() => dispatch({ type: "bringForward" })}>
+          <ArrowUp size={15} /> Front
+        </button>
+        <button onClick={() => dispatch({ type: "sendBackward" })}>
+          <ArrowDown size={15} /> Back
+        </button>
+        <button onClick={() => dispatch({ type: "deleteSelected" })}>
+          <Trash2 size={15} /> Delete
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onCommit,
+  min,
+  max,
+  step = 1,
+}: {
+  label: string;
+  value: number;
+  onCommit: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+}) {
+  return (
+    <label className="field">
+      {label}
+      <input
+        type="number"
+        value={Number.isFinite(value) ? value : 0}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(event) => {
+          const next = event.target.valueAsNumber;
+          if (Number.isFinite(next)) onCommit(next);
+        }}
+      />
+    </label>
+  );
+}
+
+function ColorField({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  onCommit: (value: string) => void;
+}) {
+  return (
+    <label className="field color-field">
+      {label}
+      <input
+        type="color"
+        value={value}
+        onChange={(event) => onCommit(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function Readout({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="field readout">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function updatePoint(
+  selected: DiagramObject,
+  dispatch: Dispatch<EditorAction>,
+  index: number,
+  value: number,
+) {
+  if (selected.type !== "line" && selected.type !== "arrow") return;
+  const points = [...selected.points] as [number, number, number, number];
+  points[index] = value;
+  dispatch({
+    type: "updateSelected",
+    patch: { points } as Partial<DiagramObject>,
+  });
+}
