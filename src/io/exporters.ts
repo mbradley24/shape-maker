@@ -5,20 +5,34 @@ export function exportDiagramSvg(
   width: number,
   height: number,
 ): string {
-  const body = sortByLayer(objects).map(objectToSvg).join("\n  ");
+  const orderedObjects = sortByLayer(objects);
+  const arrowMarkerIds = new Map<string, string>();
+  const arrowMarkers = orderedObjects
+    .filter((object) => object.type === "arrow")
+    .map((object, index) => {
+      const markerId = `arrowhead-${index}`;
+      arrowMarkerIds.set(object.id, markerId);
+      return [
+        `    <marker id="${markerId}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">`,
+        `      <polygon points="0 0, 10 3.5, 0 7" fill="${escapeXml(object.style.stroke)}" />`,
+        "    </marker>",
+      ].join("\n");
+    })
+    .join("\n");
+  const body = orderedObjects
+    .map((object) => objectToSvg(object, arrowMarkerIds.get(object.id)))
+    .join("\n  ");
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
     "  <defs>",
-    '    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">',
-    '      <polygon points="0 0, 10 3.5, 0 7" fill="#b91c1c" />',
-    "    </marker>",
+    arrowMarkers,
     "  </defs>",
     body,
     "</svg>",
   ].join("\n");
 }
 
-function objectToSvg(object: DiagramObject): string {
+function objectToSvg(object: DiagramObject, arrowMarkerId?: string): string {
   const common = `stroke="${escapeXml(object.style.stroke)}" fill="${escapeXml(object.style.fill)}" stroke-width="${object.style.strokeWidth}" opacity="${object.style.opacity}"`;
   const transform = `transform="translate(${object.x} ${object.y}) rotate(${object.rotation})"`;
 
@@ -34,7 +48,7 @@ function objectToSvg(object: DiagramObject): string {
     case "line":
       return lineToSvg(object, common, transform, false);
     case "arrow":
-      return lineToSvg(object, common, transform, true);
+      return lineToSvg(object, common, transform, arrowMarkerId);
   }
 }
 
@@ -42,10 +56,10 @@ function lineToSvg(
   object: LineObject,
   common: string,
   transform: string,
-  arrow: boolean,
+  arrowMarkerId?: string | false,
 ): string {
   const [x1, y1, x2, y2] = object.points;
-  const marker = arrow ? ' marker-end="url(#arrowhead)"' : "";
+  const marker = arrowMarkerId ? ` marker-end="url(#${arrowMarkerId})"` : "";
   return `<line ${transform} x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${common}${marker} />`;
 }
 

@@ -19,6 +19,14 @@ export type StageHandle = {
   toPng: () => string | null;
 };
 
+export type TransformSnapshot = {
+  x: number;
+  y: number;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+};
+
 type Props = {
   state: EditorState;
   dispatch: Dispatch<EditorAction>;
@@ -157,28 +165,16 @@ function DrawableObject({
       }),
     onTransformEnd: (event: Konva.KonvaEventObject<Event>) => {
       const node = event.target;
-      const scaleX = node.scaleX();
-      const scaleY = node.scaleY();
+      const patch = transformedObjectPatch(object, {
+        x: node.x(),
+        y: node.y(),
+        rotation: node.rotation(),
+        scaleX: node.scaleX(),
+        scaleY: node.scaleY(),
+      });
       node.scaleX(1);
       node.scaleY(1);
-      if (object.type === "line" || object.type === "arrow") {
-        dispatch({
-          type: "updateSelected",
-          patch: { x: node.x(), y: node.y(), rotation: node.rotation() },
-        });
-        return;
-      }
-      if (!("width" in object) || !("height" in object)) return;
-      dispatch({
-        type: "updateSelected",
-        patch: {
-          x: node.x(),
-          y: node.y(),
-          rotation: node.rotation(),
-          width: Math.max(8, object.width * scaleX),
-          height: Math.max(8, object.height * scaleY),
-        } as Partial<DiagramObject>,
-      });
+      if (patch) dispatch({ type: "updateSelected", patch });
     },
   };
 
@@ -240,4 +236,29 @@ function DrawableObject({
         />
       );
   }
+}
+
+export function transformedObjectPatch(
+  object: DiagramObject,
+  snapshot: TransformSnapshot,
+): Partial<DiagramObject> | null {
+  if (object.type === "line" || object.type === "arrow") {
+    return {
+      x: snapshot.x,
+      y: snapshot.y,
+      rotation: snapshot.rotation,
+    };
+  }
+  if (!("width" in object) || !("height" in object)) return null;
+
+  const baselineScaleX = object.type === "ellipse" ? object.width / 2 : 1;
+  const baselineScaleY = object.type === "ellipse" ? object.height / 2 : 1;
+
+  return {
+    x: snapshot.x,
+    y: snapshot.y,
+    rotation: snapshot.rotation,
+    width: Math.max(8, object.width * (snapshot.scaleX / baselineScaleX)),
+    height: Math.max(8, object.height * (snapshot.scaleY / baselineScaleY)),
+  } as Partial<DiagramObject>;
 }
