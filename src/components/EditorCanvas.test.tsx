@@ -4,6 +4,8 @@ import type { DiagramObject, LineObject } from "../model/diagram";
 import {
   draggedObjectPositionPatch,
   ellipseRenderProps,
+  lineEndpointDragPatch,
+  lineEndpointHandlePosition,
   lineLikeRenderProps,
   transformedObjectPatch,
 } from "./EditorCanvas";
@@ -234,5 +236,59 @@ describe("lineLikeRenderProps", () => {
     expect(lineLikeRenderProps(diagonalArrow).hitStrokeWidth).toBeGreaterThan(
       diagonalArrow.style.strokeWidth,
     );
+  });
+});
+
+describe("line endpoint helpers", () => {
+  it("updates only the start endpoint from a dragged handle", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 10, y: 20, id: "line" },
+      0,
+    );
+    if (line.type !== "line") throw new Error("expected line");
+    line.points = [0, 0, 180, 40];
+
+    expect(lineEndpointDragPatch(line, "start", 25, 35)).toEqual({
+      points: [15, 15, 180, 40],
+    });
+  });
+
+  it("updates only the end endpoint from a dragged handle", () => {
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+    if (arrow.type !== "arrow") throw new Error("expected arrow");
+    arrow.points = [5, 10, 180, 40];
+
+    expect(lineEndpointDragPatch(arrow, "end", 210, 75)).toEqual({
+      points: [5, 10, 200, 55],
+    });
+  });
+
+  it("round-trips rotated endpoint handles through local line geometry", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 100, y: 200, id: "line" },
+      0,
+    );
+    if (line.type !== "line") throw new Error("expected line");
+    line.rotation = 90;
+    line.points = [0, 0, 30, 10];
+
+    const endHandle = lineEndpointHandlePosition(line, "end");
+    expect(endHandle.x).toBeCloseTo(90);
+    expect(endHandle.y).toBeCloseTo(230);
+
+    const patch = lineEndpointDragPatch(
+      line,
+      "end",
+      endHandle.x - 20,
+      endHandle.y + 10,
+    );
+
+    expect(patch.points[0]).toBe(0);
+    expect(patch.points[1]).toBe(0);
+    expect(patch.points[2]).toBeCloseTo(40);
+    expect(patch.points[3]).toBeCloseTo(30);
   });
 });

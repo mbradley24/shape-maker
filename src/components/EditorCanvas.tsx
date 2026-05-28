@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
   Arrow,
+  Circle,
   Ellipse,
   Layer,
   Line,
@@ -16,6 +17,7 @@ import {
   DiagramObject,
   EditorState,
   LineObject,
+  selectedObject,
   sortByLayer,
 } from "../model/diagram";
 import { isShapeTool } from "../App";
@@ -39,12 +41,17 @@ type Props = {
 
 export const MIN_LINE_LIKE_HIT_STROKE_WIDTH = 16;
 const LINE_LIKE_HIT_PADDING = 12;
+const LINE_ENDPOINT_HANDLE_RADIUS = 6;
+const LINE_ENDPOINT_HANDLE_STROKE_WIDTH = 2;
 
 export const EditorCanvas = forwardRef<StageHandle, Props>(
   function EditorCanvas({ state, dispatch }, ref) {
     const stageRef = useRef<Konva.Stage>(null);
     const transformerRef = useRef<Konva.Transformer>(null);
     const [size, setSize] = useState({ width: 900, height: 640 });
+    const selected = selectedObject(state);
+    const selectedLineLike =
+      selected?.type === "line" || selected?.type === "arrow" ? selected : null;
 
     useImperativeHandle(ref, () => ({
       toPng: () => stageRef.current?.toDataURL({ pixelRatio: 2 }) ?? null,
@@ -83,6 +90,11 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
     function bindNode(node: Konva.Node | null, object: DiagramObject) {
       if (!node || object.id !== state.selectedId || !transformerRef.current)
         return;
+      if (object.type === "line" || object.type === "arrow") {
+        transformerRef.current.nodes([]);
+        transformerRef.current.getLayer()?.batchDraw();
+        return;
+      }
       transformerRef.current.nodes([node]);
       transformerRef.current.getLayer()?.batchDraw();
     }
@@ -114,16 +126,23 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                 bindNode={bindNode}
               />
             ))}
-            <Transformer
-              ref={transformerRef}
-              rotateEnabled
-              enabledAnchors={[
-                "top-left",
-                "top-right",
-                "bottom-left",
-                "bottom-right",
-              ]}
-            />
+            {selectedLineLike ? (
+              <LineEndpointHandles
+                object={selectedLineLike}
+                dispatch={dispatch}
+              />
+            ) : (
+              <Transformer
+                ref={transformerRef}
+                rotateEnabled
+                enabledAnchors={[
+                  "top-left",
+                  "top-right",
+                  "bottom-left",
+                  "bottom-right",
+                ]}
+              />
+            )}
           </Layer>
         </Stage>
         {state.objects.length === 0 ? (
@@ -246,6 +265,62 @@ function DrawableObject({
   }
 }
 
+type LineEndpointHandlesProps = {
+  object: LineObject;
+  dispatch: Dispatch<EditorAction>;
+};
+
+function LineEndpointHandles({ object, dispatch }: LineEndpointHandlesProps) {
+  return (
+    <>
+      {(["start", "end"] as const).map((endpoint) => {
+        const { x, y } = lineEndpointHandlePosition(object, endpoint);
+        return (
+          <Circle
+            key={`${object.id}-${endpoint}-endpoint`}
+            name={`line-${endpoint}-endpoint-handle`}
+            x={x}
+            y={y}
+            radius={LINE_ENDPOINT_HANDLE_RADIUS}
+            fill="#ffffff"
+            stroke="#2563eb"
+            strokeWidth={LINE_ENDPOINT_HANDLE_STROKE_WIDTH}
+            draggable
+            onPointerDown={(event) => {
+              event.cancelBubble = true;
+            }}
+            onClick={(event) => {
+              event.cancelBubble = true;
+            }}
+            onDragMove={(event) => {
+              dispatch({
+                type: "updateSelected",
+                patch: lineEndpointDragPatch(
+                  object,
+                  endpoint,
+                  event.target.x(),
+                  event.target.y(),
+                ),
+              });
+            }}
+            onDragEnd={(event) => {
+              dispatch({
+                type: "updateSelected",
+                patch: lineEndpointDragPatch(
+                  object,
+                  endpoint,
+                  event.target.x(),
+                  event.target.y(),
+                ),
+              });
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 export function transformedObjectPatch(
   object: DiagramObject,
   snapshot: TransformSnapshot,
@@ -321,5 +396,51 @@ export function lineLikeRenderProps(object: LineObject) {
       MIN_LINE_LIKE_HIT_STROKE_WIDTH,
       object.style.strokeWidth + LINE_LIKE_HIT_PADDING,
     ),
+  };
+}
+
+export type LineEndpoint = "start" | "end";
+
+export function lineEndpointHandlePosition(
+  object: LineObject,
+  endpoint: LineEndpoint,
+) {
+  const pointIndex = endpoint === "start" ? 0 : 2;
+  const rotated = rotatePoint(
+    object.points[pointIndex],
+    object.points[pointIndex + 1],
+    object.rotation,
+  );
+  return {
+    x: object.x + rotated.x,
+    y: object.y + rotated.y,
+  };
+}
+
+export function lineEndpointDragPatch(
+  object: LineObject,
+  endpoint: LineEndpoint,
+  handleX: number,
+  handleY: number,
+): Pick<LineObject, "points"> {
+  const point = rotatePoint(
+    handleX - object.x,
+    handleY - object.y,
+    -object.rotation,
+  );
+  const points = [...object.points] as LineObject["points"];
+  const pointIndex = endpoint === "start" ? 0 : 2;
+  points[pointIndex] = point.x;
+  points[pointIndex + 1] = point.y;
+  return { points };
+}
+
+function rotatePoint(x: number, y: number, degrees: number) {
+  const radians = degrees * (Math.PI / 180);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
   };
 }
