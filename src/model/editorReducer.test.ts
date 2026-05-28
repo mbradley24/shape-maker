@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDiagramObject,
+  defaultStyle,
   initialEditorState,
   lineMetrics,
 } from "./diagram";
@@ -137,6 +138,104 @@ describe("editorReducer", () => {
       style: { stroke: "#ff0000", fill: "#00ff00", strokeWidth: 8 },
     });
     expect(target).not.toHaveProperty("text", "Source text");
+  });
+
+  it("clears copied style after applying it once", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id: "source",
+    });
+    state = editorReducer(state, {
+      type: "updateSelectedStyle",
+      patch: { stroke: "#f97316", fill: "#f9a8d4", strokeWidth: 6 },
+    });
+    state = editorReducer(state, { type: "copySelectedStyle" });
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "ellipse",
+      x: 200,
+      y: 0,
+      id: "first-target",
+    });
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "triangle",
+      x: 400,
+      y: 0,
+      id: "second-target",
+    });
+
+    state = editorReducer(state, {
+      type: "applyCopiedStyle",
+      id: "first-target",
+    });
+
+    expect(state.copiedStyle).toBeNull();
+    expect(
+      state.objects.find((object) => object.id === "first-target"),
+    ).toMatchObject({
+      style: { stroke: "#f97316", fill: "#f9a8d4", strokeWidth: 6 },
+    });
+
+    state = editorReducer(state, {
+      type: "applyCopiedStyle",
+      id: "second-target",
+    });
+
+    expect(
+      state.objects.find((object) => object.id === "second-target"),
+    ).toMatchObject({
+      style: defaultStyle,
+    });
+  });
+
+  it("selects normally and creates default-styled shapes after format painter is used", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id: "source",
+    });
+    state = editorReducer(state, {
+      type: "updateSelectedStyle",
+      patch: { stroke: "#f97316", fill: "#f9a8d4", strokeWidth: 6 },
+    });
+    state = editorReducer(state, { type: "copySelectedStyle" });
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "ellipse",
+      x: 200,
+      y: 0,
+      id: "target",
+    });
+
+    state = editorReducer(state, { type: "applyCopiedStyle", id: "target" });
+    state = editorReducer(state, { type: "select", id: "source" });
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 400,
+      y: 0,
+      id: "new-shape",
+    });
+
+    expect(state.selectedId).toBe("new-shape");
+    expect(
+      state.objects.find((object) => object.id === "source"),
+    ).toMatchObject({
+      style: { stroke: "#f97316", fill: "#f9a8d4", strokeWidth: 6 },
+    });
+    expect(
+      state.objects.find((object) => object.id === "new-shape"),
+    ).toMatchObject({
+      style: defaultStyle,
+    });
   });
 
   it("duplicates, deletes, and moves layers deterministically", () => {

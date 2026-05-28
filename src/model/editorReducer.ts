@@ -101,10 +101,7 @@ export function editorReducer(
     }
     case "applyCopiedStyle":
       if (!state.copiedStyle) return state;
-      return updateObject(state, action.id, (object) => ({
-        ...object,
-        style: cloneStyle(state.copiedStyle!),
-      }));
+      return applyCopiedStyle(state, action.id);
     case "duplicateSelected": {
       const selected = state.objects.find(
         (object) => object.id === state.selectedId,
@@ -150,6 +147,23 @@ export function editorReducer(
     case "markSaved":
       return { ...state, dirty: false };
   }
+}
+
+function applyCopiedStyle(state: EditorState, id: string): EditorState {
+  if (!state.copiedStyle) return state;
+  let changed = false;
+  const copiedStyle = state.copiedStyle;
+  const objects = state.objects.map((object) => {
+    if (object.id !== id) return object;
+    changed = true;
+    return {
+      ...object,
+      style: cloneStyle(copiedStyle),
+    };
+  });
+  return changed
+    ? { ...state, objects, copiedStyle: null, dirty: true, error: null }
+    : state;
 }
 
 function updateObject(
