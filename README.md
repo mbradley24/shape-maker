@@ -29,6 +29,11 @@ npm run typecheck
 npm run build
 ```
 
+Frontend verification also runs in GitHub Actions on every pull request and on
+pushes to `main`. The CI workflow installs dependencies with `npm ci` and runs
+the frontend test, lint, typecheck, and build checks listed above. Native Tauri
+packaging is not part of the frontend CI workflow.
+
 Native packaging:
 
 ```sh
