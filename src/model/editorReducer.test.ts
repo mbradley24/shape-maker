@@ -35,6 +35,9 @@ describe("editorReducer", () => {
       state.objects.find((object) => object.type === "rectangle"),
     ).toMatchObject({ width: 160, height: 96 });
     expect(
+      state.objects.find((object) => object.type === "ellipse"),
+    ).toMatchObject({ width: 120, height: 120 });
+    expect(
       state.objects.find((object) => object.type === "arrow"),
     ).toMatchObject({ points: [0, 0, 180, 0] });
     expect(

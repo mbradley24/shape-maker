@@ -2,7 +2,7 @@ import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
   Arrow,
-  Circle,
+  Ellipse,
   Layer,
   Line,
   Rect,
@@ -182,16 +182,7 @@ function DrawableObject({
     case "rectangle":
       return <Rect {...common} width={object.width} height={object.height} />;
     case "ellipse":
-      return (
-        <Circle
-          {...common}
-          radius={1}
-          scaleX={object.width / 2}
-          scaleY={object.height / 2}
-          offsetX={-1}
-          offsetY={-1}
-        />
-      );
+      return <Ellipse {...common} {...ellipseRenderProps(object)} />;
     case "triangle":
       return (
         <Line
@@ -251,14 +242,27 @@ export function transformedObjectPatch(
   }
   if (!("width" in object) || !("height" in object)) return null;
 
-  const baselineScaleX = object.type === "ellipse" ? object.width / 2 : 1;
-  const baselineScaleY = object.type === "ellipse" ? object.height / 2 : 1;
-
   return {
     x: snapshot.x,
     y: snapshot.y,
     rotation: snapshot.rotation,
-    width: Math.max(8, object.width * (snapshot.scaleX / baselineScaleX)),
-    height: Math.max(8, object.height * (snapshot.scaleY / baselineScaleY)),
+    width: Math.max(8, object.width * snapshot.scaleX),
+    height: Math.max(8, object.height * snapshot.scaleY),
   } as Partial<DiagramObject>;
+}
+
+export function ellipseRenderProps(object: {
+  width: number;
+  height: number;
+  style: DiagramObject["style"];
+}) {
+  return {
+    radiusX: object.width / 2,
+    radiusY: object.height / 2,
+    offsetX: -object.width / 2,
+    offsetY: -object.height / 2,
+    fill: object.style.fill,
+    stroke: object.style.stroke,
+    strokeWidth: object.style.strokeWidth,
+  };
 }

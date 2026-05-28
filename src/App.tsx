@@ -23,7 +23,7 @@ import { openProjectFile, saveTextFile } from "./io/files";
 const tools: Array<{ tool: Tool; label: string; icon: typeof Square }> = [
   { tool: "select", label: "Select", icon: MousePointer2 },
   { tool: "rectangle", label: "Rectangle", icon: Square },
-  { tool: "ellipse", label: "Ellipse", icon: Circle },
+  { tool: "ellipse", label: "Circle", icon: Circle },
   { tool: "triangle", label: "Triangle", icon: Triangle },
   { tool: "line", label: "Line", icon: Minus },
   { tool: "arrow", label: "Arrow", icon: ArrowRight },

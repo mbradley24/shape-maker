@@ -135,8 +135,8 @@ export function createDiagramObject(
       return {
         ...base,
         type: "ellipse",
-        width: 140,
-        height: 96,
+        width: 120,
+        height: 120,
         style: cloneStyle(defaultStyle),
       };
     case "triangle":
