@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createDiagramObject } from "../model/diagram";
-import type { DiagramObject } from "../model/diagram";
+import type { DiagramObject, LineObject } from "../model/diagram";
 import {
   draggedObjectPositionPatch,
   ellipseRenderProps,
+  lineLikeRenderProps,
   transformedObjectPatch,
 } from "./EditorCanvas";
 
@@ -187,5 +188,51 @@ describe("transformedObjectPatch", () => {
       x: 35,
       y: 55,
     });
+  });
+});
+
+describe("lineLikeRenderProps", () => {
+  it.each([
+    ["horizontal", [0, 0, 180, 0]],
+    ["vertical", [20, 0, 20, 180]],
+    ["diagonal", [0, 0, 140, 90]],
+  ] satisfies Array<[string, LineObject["points"]]>)(
+    "keeps %s line visuals unchanged while widening the hit target",
+    (_orientation, points) => {
+      const line = createDiagramObject(
+        { type: "line", x: 10, y: 20, id: "line" },
+        0,
+      );
+      if (line.type !== "line") throw new Error("expected line");
+      const shapedLine = { ...line, points };
+
+      expect(lineLikeRenderProps(shapedLine)).toMatchObject({
+        points,
+        hitStrokeWidth: expect.any(Number),
+      });
+      expect(lineLikeRenderProps(shapedLine).hitStrokeWidth).toBeGreaterThan(
+        shapedLine.style.strokeWidth,
+      );
+    },
+  );
+
+  it("widens arrow hit targets without changing arrow geometry props", () => {
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+    if (arrow.type !== "arrow") throw new Error("expected arrow");
+    const diagonalArrow = {
+      ...arrow,
+      points: [0, 0, 140, 90],
+    } satisfies LineObject;
+
+    expect(lineLikeRenderProps(diagonalArrow)).toMatchObject({
+      points: diagonalArrow.points,
+      hitStrokeWidth: expect.any(Number),
+    });
+    expect(lineLikeRenderProps(diagonalArrow).hitStrokeWidth).toBeGreaterThan(
+      diagonalArrow.style.strokeWidth,
+    );
   });
 });
