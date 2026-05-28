@@ -1,9 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { createDiagramObject } from "../model/diagram";
-import { ellipseRenderProps, transformedObjectPatch } from "./EditorCanvas";
+import type { DiagramObject } from "../model/diagram";
+import {
+  draggedObjectPositionPatch,
+  ellipseRenderProps,
+  transformedObjectPatch,
+} from "./EditorCanvas";
+
+type EllipseObject = DiagramObject & {
+  type: "ellipse";
+  width: number;
+  height: number;
+};
+type EllipsePatch = Partial<EllipseObject> &
+  Pick<EllipseObject, "x" | "y" | "rotation" | "width" | "height">;
+
+function expectEllipsePatch(
+  patch: Partial<DiagramObject> | null,
+): asserts patch is EllipsePatch {
+  expect(patch).not.toBeNull();
+  expect(patch).toHaveProperty("x");
+  expect(patch).toHaveProperty("y");
+  expect(patch).toHaveProperty("rotation");
+  expect(patch).toHaveProperty("width");
+  expect(patch).toHaveProperty("height");
+}
 
 describe("transformedObjectPatch", () => {
-  it("keeps ellipse dimensions stable when the rendered node is not scaled", () => {
+  it("keeps ellipse dimensions stable during a rotation-only transform", () => {
     const ellipse = createDiagramObject(
       { type: "ellipse", x: 10, y: 20, id: "ellipse" },
       0,
@@ -11,23 +35,24 @@ describe("transformedObjectPatch", () => {
     if (ellipse.type !== "ellipse") throw new Error("expected ellipse");
 
     const patch = transformedObjectPatch(ellipse, {
-      x: 15,
-      y: 25,
+      x: ellipse.x + ellipse.width / 2,
+      y: ellipse.y + ellipse.height / 2,
       rotation: 30,
       scaleX: 1,
       scaleY: 1,
     });
 
+    expectEllipsePatch(patch);
     expect(patch).toMatchObject({
-      x: 15,
-      y: 25,
+      x: ellipse.x,
+      y: ellipse.y,
       rotation: 30,
       width: ellipse.width,
       height: ellipse.height,
     });
   });
 
-  it("updates ellipse dimensions from transformer scale without scaling stroke", () => {
+  it("preserves equal width and height during a uniform circle resize", () => {
     const ellipse = createDiagramObject(
       { type: "ellipse", x: 10, y: 20, id: "ellipse" },
       0,
@@ -35,16 +60,92 @@ describe("transformedObjectPatch", () => {
     if (ellipse.type !== "ellipse") throw new Error("expected ellipse");
 
     const patch = transformedObjectPatch(ellipse, {
-      x: 15,
-      y: 25,
+      x: ellipse.x + ellipse.width / 2,
+      y: ellipse.y + ellipse.height / 2,
       rotation: 30,
+      scaleX: 1.5,
+      scaleY: 1.5,
+    });
+
+    expectEllipsePatch(patch);
+    expect(patch).toMatchObject({
+      width: ellipse.width * 1.5,
+      height: ellipse.height * 1.5,
+    });
+    expect(patch?.width).toBe(patch?.height);
+  });
+
+  it("does not compound ellipse dimensions through repeated rotate and resize cycles", () => {
+    const ellipse = createDiagramObject(
+      { type: "ellipse", x: 10, y: 20, id: "ellipse" },
+      0,
+    );
+    if (ellipse.type !== "ellipse") throw new Error("expected ellipse");
+
+    const applyTransform = (
+      target: typeof ellipse,
+      scaleX: number,
+      scaleY: number,
+      rotation: number,
+    ) => {
+      const patch = transformedObjectPatch(target, {
+        x: target.x + target.width / 2,
+        y: target.y + target.height / 2,
+        rotation,
+        scaleX,
+        scaleY,
+      });
+      expectEllipsePatch(patch);
+      return { ...target, ...patch, type: "ellipse" } satisfies EllipseObject;
+    };
+
+    const afterRotate = applyTransform(ellipse, 1, 1, 45);
+    const afterResize = applyTransform(afterRotate, 1.25, 1.25, 45);
+    const afterSecondRotate = applyTransform(afterResize, 1, 1, 90);
+    const afterSecondResize = applyTransform(afterSecondRotate, 0.8, 0.8, 90);
+
+    expect(afterRotate).toMatchObject({
+      width: 120,
+      height: 120,
+    });
+    expect(afterResize).toMatchObject({
+      width: 150,
+      height: 150,
+    });
+    expect(afterSecondRotate).toMatchObject({
+      width: 150,
+      height: 150,
+    });
+    expect(afterSecondResize).toMatchObject({
+      width: 120,
+      height: 120,
+    });
+  });
+
+  it("allows intentional nonuniform ellipse resize", () => {
+    const ellipse = createDiagramObject(
+      { type: "ellipse", x: 10, y: 20, id: "ellipse" },
+      0,
+    );
+    if (ellipse.type !== "ellipse") throw new Error("expected ellipse");
+    const stretchedEllipse = {
+      ...ellipse,
+      width: 160,
+      height: 100,
+    };
+
+    const patch = transformedObjectPatch(stretchedEllipse, {
+      x: stretchedEllipse.x + stretchedEllipse.width / 2,
+      y: stretchedEllipse.y + stretchedEllipse.height / 2,
+      rotation: 15,
       scaleX: 1.5,
       scaleY: 0.5,
     });
 
+    expectEllipsePatch(patch);
     expect(patch).toMatchObject({
-      width: ellipse.width * 1.5,
-      height: ellipse.height * 0.5,
+      width: 240,
+      height: 50,
     });
   });
 
@@ -59,13 +160,32 @@ describe("transformedObjectPatch", () => {
     ellipse.style.strokeWidth = 6;
 
     expect(ellipseRenderProps(ellipse)).toMatchObject({
+      x: ellipse.x + ellipse.width / 2,
+      y: ellipse.y + ellipse.height / 2,
       radiusX: ellipse.width / 2,
       radiusY: ellipse.height / 2,
-      offsetX: -ellipse.width / 2,
-      offsetY: -ellipse.height / 2,
       fill: "#22c55e",
       stroke: "#1d4ed8",
       strokeWidth: 6,
+    });
+  });
+
+  it("stores ellipse drag positions as top-left coordinates", () => {
+    const ellipse = createDiagramObject(
+      { type: "ellipse", x: 10, y: 20, id: "ellipse" },
+      0,
+    );
+    if (ellipse.type !== "ellipse") throw new Error("expected ellipse");
+
+    expect(
+      draggedObjectPositionPatch(
+        ellipse,
+        ellipse.x + ellipse.width / 2 + 25,
+        ellipse.y + ellipse.height / 2 + 35,
+      ),
+    ).toMatchObject({
+      x: 35,
+      y: 55,
     });
   });
 });

@@ -160,8 +160,11 @@ function DrawableObject({
       dispatch({
         type: "move",
         id: object.id,
-        x: event.target.x(),
-        y: event.target.y(),
+        ...draggedObjectPositionPatch(
+          object,
+          event.target.x(),
+          event.target.y(),
+        ),
       }),
     onTransformEnd: (event: Konva.KonvaEventObject<Event>) => {
       const node = event.target;
@@ -242,6 +245,19 @@ export function transformedObjectPatch(
   }
   if (!("width" in object) || !("height" in object)) return null;
 
+  if (object.type === "ellipse") {
+    const width = Math.max(8, object.width * snapshot.scaleX);
+    const height = Math.max(8, object.height * snapshot.scaleY);
+
+    return {
+      x: snapshot.x - width / 2,
+      y: snapshot.y - height / 2,
+      rotation: snapshot.rotation,
+      width,
+      height,
+    };
+  }
+
   return {
     x: snapshot.x,
     y: snapshot.y,
@@ -251,16 +267,33 @@ export function transformedObjectPatch(
   } as Partial<DiagramObject>;
 }
 
+export function draggedObjectPositionPatch(
+  object: DiagramObject,
+  x: number,
+  y: number,
+) {
+  if (object.type === "ellipse") {
+    return {
+      x: x - object.width / 2,
+      y: y - object.height / 2,
+    };
+  }
+
+  return { x, y };
+}
+
 export function ellipseRenderProps(object: {
+  x: number;
+  y: number;
   width: number;
   height: number;
   style: DiagramObject["style"];
 }) {
   return {
+    x: object.x + object.width / 2,
+    y: object.y + object.height / 2,
     radiusX: object.width / 2,
     radiusY: object.height / 2,
-    offsetX: -object.width / 2,
-    offsetY: -object.height / 2,
     fill: object.style.fill,
     stroke: object.style.stroke,
     strokeWidth: object.style.strokeWidth,
