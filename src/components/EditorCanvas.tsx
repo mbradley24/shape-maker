@@ -12,7 +12,12 @@ import {
 } from "react-konva";
 import type Konva from "konva";
 import { EditorAction } from "../model/editorReducer";
-import { DiagramObject, EditorState, sortByLayer } from "../model/diagram";
+import {
+  DiagramObject,
+  EditorState,
+  LineObject,
+  sortByLayer,
+} from "../model/diagram";
 import { isShapeTool } from "../App";
 
 export type StageHandle = {
@@ -31,6 +36,9 @@ type Props = {
   state: EditorState;
   dispatch: Dispatch<EditorAction>;
 };
+
+export const MIN_LINE_LIKE_HIT_STROKE_WIDTH = 16;
+const LINE_LIKE_HIT_PADDING = 12;
 
 export const EditorCanvas = forwardRef<StageHandle, Props>(
   function EditorCanvas({ state, dispatch }, ref) {
@@ -218,12 +226,18 @@ function DrawableObject({
         />
       );
     case "line":
-      return <Line {...common} points={object.points} fillEnabled={false} />;
+      return (
+        <Line
+          {...common}
+          {...lineLikeRenderProps(object)}
+          fillEnabled={false}
+        />
+      );
     case "arrow":
       return (
         <Arrow
           {...common}
-          points={object.points}
+          {...lineLikeRenderProps(object)}
           pointerLength={14}
           pointerWidth={14}
           fill={object.style.stroke}
@@ -297,5 +311,15 @@ export function ellipseRenderProps(object: {
     fill: object.style.fill,
     stroke: object.style.stroke,
     strokeWidth: object.style.strokeWidth,
+  };
+}
+
+export function lineLikeRenderProps(object: LineObject) {
+  return {
+    points: object.points,
+    hitStrokeWidth: Math.max(
+      MIN_LINE_LIKE_HIT_STROKE_WIDTH,
+      object.style.strokeWidth + LINE_LIKE_HIT_PADDING,
+    ),
   };
 }
