@@ -19,6 +19,8 @@ export type DiagramStyle = {
   fontSize?: number;
 };
 
+export type ShapeDimension = "width" | "height";
+
 export type BaseObject = {
   id: string;
   type: ShapeType;
@@ -27,6 +29,7 @@ export type BaseObject = {
   rotation: number;
   style: DiagramStyle;
   zIndex: number;
+  dimensions?: ShapeDimension[];
 };
 
 export type BoxObject = BaseObject & {

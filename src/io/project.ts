@@ -3,6 +3,7 @@ import {
   DiagramObject,
   DiagramProject,
   PROJECT_VERSION,
+  ShapeDimension,
   sortByLayer,
 } from "../model/diagram";
 
@@ -77,6 +78,7 @@ function parseObject(value: unknown): DiagramObject {
           ? value.style.fontSize
           : undefined,
     },
+    dimensions: parseDimensions(value.dimensions),
   };
 
   if (value.type === "line" || value.type === "arrow") {
@@ -128,4 +130,13 @@ function numberOr(value: unknown, fallback: number): number {
 
 function stringOr(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
+}
+
+function parseDimensions(value: unknown): ShapeDimension[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const dimensions = value.filter(
+    (dimension): dimension is ShapeDimension =>
+      dimension === "width" || dimension === "height",
+  );
+  return dimensions.length > 0 ? Array.from(new Set(dimensions)) : undefined;
 }

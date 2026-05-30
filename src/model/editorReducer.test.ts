@@ -122,6 +122,82 @@ describe("editorReducer", () => {
     });
   });
 
+  it("adds editable dimensions only to supported selected shapes", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id: "rect",
+    });
+
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "width",
+      visible: true,
+    });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 244,
+    });
+
+    expect(state.objects.find((object) => object.id === "rect")).toMatchObject({
+      dimensions: ["width"],
+      width: 244,
+      height: 96,
+      type: "rectangle",
+    });
+
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "line",
+      x: 0,
+      y: 0,
+      id: "line",
+    });
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "height",
+      visible: true,
+    });
+
+    expect(
+      state.objects.find((object) => object.id === "line"),
+    ).not.toHaveProperty("dimensions");
+  });
+
+  it("clamps typed dimension values while preserving the other measurement", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "triangle",
+      x: 0,
+      y: 0,
+      id: "triangle",
+    });
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "height",
+      visible: true,
+    });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "height",
+      value: 0,
+    });
+
+    expect(
+      state.objects.find((object) => object.id === "triangle"),
+    ).toMatchObject({
+      type: "triangle",
+      width: 140,
+      height: 8,
+      dimensions: ["height"],
+    });
+  });
+
   it("copies visual style without copying geometry or text", () => {
     let state = initialEditorState();
     state = editorReducer(state, {

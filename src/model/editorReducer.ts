@@ -7,6 +7,7 @@ import {
   EditorState,
   initialEditorState,
   normalizeLayers,
+  ShapeDimension,
   ShapeType,
   Tool,
 } from "./diagram";
@@ -25,6 +26,16 @@ export type EditorAction =
   | { type: "nudgeSelected"; dx: number; dy: number }
   | { type: "updateSelected"; patch: Partial<DiagramObject> }
   | { type: "updateSelectedStyle"; patch: Partial<DiagramStyle> }
+  | {
+      type: "setSelectedDimension";
+      dimension: ShapeDimension;
+      visible: boolean;
+    }
+  | {
+      type: "updateSelectedDimension";
+      dimension: ShapeDimension;
+      value: number;
+    }
   | { type: "updateText"; text: string }
   | { type: "copySelectedStyle" }
   | { type: "applyCopiedStyle"; id: string }
@@ -85,6 +96,16 @@ export function editorReducer(
         ...object,
         style: { ...object.style, ...action.patch },
       }));
+    case "setSelectedDimension":
+      if (!state.selectedId) return state;
+      return updateObject(state, state.selectedId, (object) =>
+        setObjectDimension(object, action.dimension, action.visible),
+      );
+    case "updateSelectedDimension":
+      if (!state.selectedId) return state;
+      return updateObject(state, state.selectedId, (object) =>
+        updateObjectDimension(object, action.dimension, action.value),
+      );
     case "updateText":
       if (!state.selectedId) return state;
       return updateObject(state, state.selectedId, (object) => {
@@ -147,6 +168,55 @@ export function editorReducer(
     case "markSaved":
       return { ...state, dirty: false };
   }
+}
+
+const MIN_DIMENSION_VALUE = 8;
+
+function setObjectDimension(
+  object: DiagramObject,
+  dimension: ShapeDimension,
+  visible: boolean,
+): DiagramObject {
+  if (!supportsDimension(object, dimension)) return object;
+  const dimensions = object.dimensions ?? [];
+  const hasDimension = dimensions.includes(dimension);
+  if (visible && !hasDimension) {
+    return { ...object, dimensions: [...dimensions, dimension] };
+  }
+  if (!visible && hasDimension) {
+    const nextDimensions = dimensions.filter((item) => item !== dimension);
+    return {
+      ...object,
+      dimensions: nextDimensions.length > 0 ? nextDimensions : undefined,
+    };
+  }
+  return object;
+}
+
+function updateObjectDimension(
+  object: DiagramObject,
+  dimension: ShapeDimension,
+  value: number,
+): DiagramObject {
+  if (!supportsDimension(object, dimension) || !Number.isFinite(value)) {
+    return object;
+  }
+  return {
+    ...object,
+    [dimension]: Math.max(MIN_DIMENSION_VALUE, value),
+  } as DiagramObject;
+}
+
+function supportsDimension(
+  object: DiagramObject,
+  dimension: ShapeDimension,
+): object is DiagramObject & Record<ShapeDimension, number> {
+  return (
+    (object.type === "rectangle" ||
+      object.type === "ellipse" ||
+      object.type === "triangle") &&
+    dimension in object
+  );
 }
 
 function applyCopiedStyle(state: EditorState, id: string): EditorState {

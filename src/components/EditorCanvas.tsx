@@ -29,6 +29,7 @@ import {
   LineObject,
   rightTrianglePoints,
   selectedObject,
+  ShapeDimension,
   sortByLayer,
 } from "../model/diagram";
 import { isShapeTool } from "../App";
@@ -152,20 +153,22 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
               fill="#f8fafc"
             />
             {sortByLayer(state.objects).map((object) => (
-              <DrawableObject
-                key={object.id}
-                object={object}
-                selectedId={state.selectedId}
-                hasCopiedStyle={Boolean(state.copiedStyle)}
-                dispatch={dispatch}
-                bindNode={bindNode}
-                onRequestTextEdit={() =>
-                  setInlineTextEdit({
-                    objectId: object.id,
-                    value: object.type === "text" ? (object.text ?? "") : "",
-                  })
-                }
-              />
+              <Fragment key={object.id}>
+                <DrawableObject
+                  object={object}
+                  selectedId={state.selectedId}
+                  hasCopiedStyle={Boolean(state.copiedStyle)}
+                  dispatch={dispatch}
+                  bindNode={bindNode}
+                  onRequestTextEdit={() =>
+                    setInlineTextEdit({
+                      objectId: object.id,
+                      value: object.type === "text" ? (object.text ?? "") : "",
+                    })
+                  }
+                />
+                <DimensionOverlay object={object} />
+              </Fragment>
             ))}
             {selectedLineLike ? (
               <LineEndpointHandles
@@ -321,6 +324,45 @@ function DrawableObject({
         />
       );
   }
+}
+
+function DimensionOverlay({ object }: { object: DiagramObject }) {
+  if (!isDimensionableObject(object) || !object.dimensions?.length) {
+    return null;
+  }
+
+  return (
+    <>
+      {object.dimensions.map((dimension) => {
+        const guide = dimensionGuide(object, dimension);
+        if (!guide) return null;
+        return (
+          <Fragment key={`${object.id}-${dimension}-dimension`}>
+            <Line
+              name={`dimension-${object.id}-${dimension}-line`}
+              points={[guide.start.x, guide.start.y, guide.end.x, guide.end.y]}
+              stroke="#2563eb"
+              strokeWidth={1.5}
+              dash={[6, 4]}
+              listening={false}
+            />
+            <Text
+              name={`dimension-${object.id}-${dimension}-label`}
+              x={guide.label.x}
+              y={guide.label.y}
+              text={guide.text}
+              fontSize={12}
+              fontStyle="bold"
+              fill="#1d4ed8"
+              padding={3}
+              align="center"
+              listening={false}
+            />
+          </Fragment>
+        );
+      })}
+    </>
+  );
 }
 
 type InlineTextEditorProps = {
@@ -722,6 +764,74 @@ function triangleCornerLocalPosition(
     case "vertical":
       return { x: 0, y: object.height };
   }
+}
+
+type DimensionableObject = BoxObject & {
+  type: "rectangle" | "ellipse" | "triangle";
+};
+
+export function isDimensionableObject(
+  object: DiagramObject,
+): object is DimensionableObject {
+  return (
+    object.type === "rectangle" ||
+    object.type === "ellipse" ||
+    object.type === "triangle"
+  );
+}
+
+export function dimensionLabel(
+  object: DimensionableObject,
+  dimension: ShapeDimension,
+) {
+  const value = dimension === "width" ? object.width : object.height;
+  const label =
+    object.type === "triangle"
+      ? dimension === "width"
+        ? "leg"
+        : "leg"
+      : object.type === "ellipse"
+        ? "diameter"
+        : "side";
+  return `${Math.round(value)} px ${label}`;
+}
+
+export function dimensionGuide(
+  object: DimensionableObject,
+  dimension: ShapeDimension,
+) {
+  const offset = 22;
+  const textOffset = 14;
+  const local =
+    dimension === "width"
+      ? {
+          start: { x: 0, y: -offset },
+          end: { x: object.width, y: -offset },
+          label: { x: object.width / 2 - 34, y: -offset - textOffset },
+        }
+      : {
+          start: { x: -offset, y: 0 },
+          end: { x: -offset, y: object.height },
+          label: { x: -offset - 62, y: object.height / 2 - 8 },
+        };
+
+  return {
+    start: rotateLocalPoint(object, local.start),
+    end: rotateLocalPoint(object, local.end),
+    label: rotateLocalPoint(object, local.label),
+    text: dimensionLabel(object, dimension),
+  };
+}
+
+function rotateLocalPoint(
+  object: Pick<DiagramObject, "x" | "y" | "rotation">,
+  point: { x: number; y: number },
+) {
+  const rotated = rotatePoint(point.x, point.y, object.rotation);
+  return {
+    x: object.x + rotated.x,
+    y: object.y + rotated.y,
+  };
 }
 
 export function isCanvasSurfaceTarget(target: Konva.Node) {

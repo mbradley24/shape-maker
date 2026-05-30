@@ -5,6 +5,8 @@ import type { BoxObject, DiagramObject, LineObject } from "../model/diagram";
 import type { TextObject } from "./EditorCanvas";
 import {
   canvasPointerAction,
+  dimensionGuide,
+  dimensionLabel,
   draggedObjectPositionPatch,
   ellipseRenderProps,
   inlineTextEditCommitAction,
@@ -426,6 +428,51 @@ describe("lineLikeRenderProps", () => {
     expect(lineLikeRenderProps(diagonalArrow).hitStrokeWidth).toBeGreaterThan(
       diagonalArrow.style.strokeWidth,
     );
+  });
+});
+
+describe("dimension helpers", () => {
+  it("renders rectangle side dimensions from current geometry", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 30, y: 40, id: "rect" },
+      0,
+    ) as BoxObject & { type: "rectangle" };
+    rectangle.width = 225;
+
+    const guide = dimensionGuide(rectangle, "width");
+
+    expect(dimensionLabel(rectangle, "width")).toBe("225 px side");
+    expect(guide.start).toEqual({ x: 30, y: 18 });
+    expect(guide.end).toEqual({ x: 255, y: 18 });
+    expect(guide.text).toBe("225 px side");
+  });
+
+  it("tracks direct ellipse resizing as diameter labels", () => {
+    const ellipse = createDiagramObject(
+      { type: "ellipse", x: 10, y: 20, id: "ellipse" },
+      0,
+    ) as BoxObject & { type: "ellipse" };
+
+    const resized = { ...ellipse, width: 180, height: 90 };
+
+    expect(dimensionLabel(resized, "width")).toBe("180 px diameter");
+    expect(dimensionLabel(resized, "height")).toBe("90 px diameter");
+  });
+
+  it("keeps rotated triangle leg dimensions attached to the rendered leg", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 100, y: 200, id: "triangle" },
+      0,
+    ) as BoxObject & { type: "triangle" };
+    triangle.rotation = 90;
+
+    const guide = dimensionGuide(triangle, "height");
+
+    expect(dimensionLabel(triangle, "height")).toBe("120 px leg");
+    expect(guide.start.x).toBeCloseTo(100);
+    expect(guide.start.y).toBeCloseTo(178);
+    expect(guide.end.x).toBeCloseTo(-20);
+    expect(guide.end.y).toBeCloseTo(178);
   });
 });
 

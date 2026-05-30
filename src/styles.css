@@ -242,3 +242,38 @@ textarea {
   color: #64748b;
   line-height: 1.4;
 }
+
+.muted.compact {
+  margin: -4px 0 10px;
+  font-size: 12px;
+}
+
+.dimension-toggle-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.dimension-toggle {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.dimension-toggle.active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.dimension-fields {
+  margin-top: 10px;
+}
