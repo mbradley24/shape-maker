@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type Konva from "konva";
 import { createDiagramObject } from "../model/diagram";
 import type { DiagramObject, LineObject } from "../model/diagram";
 import {
+  canvasPointerAction,
   draggedObjectPositionPatch,
   ellipseRenderProps,
+  isCanvasSurfaceTarget,
   lineEndpointDragPatch,
   lineEndpointHandlePosition,
   lineLikeRenderProps,
@@ -28,6 +31,75 @@ function expectEllipsePatch(
   expect(patch).toHaveProperty("width");
   expect(patch).toHaveProperty("height");
 }
+
+function fakeKonvaTarget({
+  isStage = false,
+  name = "",
+}: {
+  isStage?: boolean;
+  name?: string;
+}): Konva.Node {
+  const stage = {
+    getStage: () => stage,
+    name: () => "",
+  };
+  const node = isStage
+    ? stage
+    : {
+        getStage: () => stage,
+        name: () => name,
+      };
+  return node as unknown as Konva.Node;
+}
+
+describe("canvas pointer handling", () => {
+  it("treats the stage and background rectangle as empty canvas targets", () => {
+    expect(isCanvasSurfaceTarget(fakeKonvaTarget({ isStage: true }))).toBe(
+      true,
+    );
+    expect(
+      isCanvasSurfaceTarget(fakeKonvaTarget({ name: "canvas-background" })),
+    ).toBe(true);
+  });
+
+  it("does not treat objects or endpoint handles as empty canvas targets", () => {
+    expect(isCanvasSurfaceTarget(fakeKonvaTarget({ name: "" }))).toBe(false);
+    expect(
+      isCanvasSurfaceTarget(
+        fakeKonvaTarget({ name: "line-start-endpoint-handle" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("deselects on empty canvas in select mode only when something is selected", () => {
+    expect(
+      canvasPointerAction(
+        { activeTool: "select", selectedId: "rectangle" },
+        { x: 25, y: 40 },
+      ),
+    ).toEqual({ type: "select", id: null });
+    expect(
+      canvasPointerAction(
+        { activeTool: "select", selectedId: null },
+        { x: 25, y: 40 },
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps shape tool placement as a create action", () => {
+    expect(
+      canvasPointerAction(
+        { activeTool: "rectangle", selectedId: "selected" },
+        { x: 25, y: 40 },
+      ),
+    ).toEqual({
+      type: "createObject",
+      shape: "rectangle",
+      x: 25,
+      y: 40,
+    });
+  });
+});
 
 describe("transformedObjectPatch", () => {
   it("keeps ellipse dimensions stable during a rotation-only transform", () => {
