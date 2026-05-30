@@ -69,22 +69,12 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
     }
 
     function onStagePointerDown(event: Konva.KonvaEventObject<PointerEvent>) {
-      const isCanvasSurface =
-        event.target === event.target.getStage() ||
-        event.target.name() === "canvas-background";
-      if (!isCanvasSurface) return;
-      const pointer = event.target.getStage()?.getPointerPosition();
+      const stage = event.target.getStage();
+      if (!stage || !isCanvasSurfaceTarget(event.target)) return;
+      const pointer = stage.getPointerPosition();
       if (!pointer) return;
-      if (isShapeTool(state.activeTool)) {
-        dispatch({
-          type: "createObject",
-          shape: state.activeTool,
-          x: pointer.x,
-          y: pointer.y,
-        });
-      } else {
-        dispatch({ type: "select", id: null });
-      }
+      const action = canvasPointerAction(state, pointer);
+      if (action) dispatch(action);
     }
 
     function bindNode(node: Konva.Node | null, object: DiagramObject) {
@@ -433,6 +423,26 @@ export function lineEndpointDragPatch(
   points[pointIndex] = point.x;
   points[pointIndex + 1] = point.y;
   return { points };
+}
+
+export function isCanvasSurfaceTarget(target: Konva.Node) {
+  return target === target.getStage() || target.name() === "canvas-background";
+}
+
+export function canvasPointerAction(
+  state: Pick<EditorState, "activeTool" | "selectedId">,
+  pointer: { x: number; y: number },
+): EditorAction | null {
+  if (isShapeTool(state.activeTool)) {
+    return {
+      type: "createObject",
+      shape: state.activeTool,
+      x: pointer.x,
+      y: pointer.y,
+    };
+  }
+
+  return state.selectedId ? { type: "select", id: null } : null;
 }
 
 function rotatePoint(x: number, y: number, degrees: number) {
