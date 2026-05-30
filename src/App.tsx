@@ -8,7 +8,7 @@ import {
   Type,
   Upload,
   Download,
-  Triangle,
+  TriangleRight,
   ArrowRight,
   Minus,
 } from "lucide-react";
@@ -24,7 +24,7 @@ const tools: Array<{ tool: Tool; label: string; icon: typeof Square }> = [
   { tool: "select", label: "Select", icon: MousePointer2 },
   { tool: "rectangle", label: "Rectangle", icon: Square },
   { tool: "ellipse", label: "Circle", icon: Circle },
-  { tool: "triangle", label: "Triangle", icon: Triangle },
+  { tool: "triangle", label: "Triangle", icon: TriangleRight },
   { tool: "line", label: "Line", icon: Minus },
   { tool: "arrow", label: "Arrow", icon: ArrowRight },
   { tool: "text", label: "Text", icon: Type },
