@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import type Konva from "konva";
 import { createDiagramObject } from "../model/diagram";
 import type { DiagramObject, LineObject } from "../model/diagram";
+import type { TextObject } from "./EditorCanvas";
 import {
   canvasPointerAction,
   draggedObjectPositionPatch,
   ellipseRenderProps,
+  inlineTextEditCommitAction,
+  inlineTextEditorStyle,
   isCanvasSurfaceTarget,
   lineEndpointDragPatch,
   lineEndpointHandlePosition,
   lineLikeRenderProps,
+  shouldStartInlineTextEdit,
   triangleCornerDragPatch,
   triangleCornerHandlePosition,
   transformedObjectPatch,
@@ -99,6 +103,72 @@ describe("canvas pointer handling", () => {
       shape: "rectangle",
       x: 25,
       y: 40,
+    });
+  });
+});
+
+describe("inline text editing helpers", () => {
+  it("starts inline editing only for an already selected text object", () => {
+    const text = createDiagramObject(
+      { type: "text", x: 10, y: 20, id: "text" },
+      0,
+    );
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 40, y: 50, id: "rectangle" },
+      1,
+    );
+
+    expect(shouldStartInlineTextEdit(text, "text")).toBe(true);
+    expect(shouldStartInlineTextEdit(text, "other")).toBe(false);
+    expect(shouldStartInlineTextEdit(rectangle, "rectangle")).toBe(false);
+  });
+
+  it("commits text, including intentionally empty text, only for the selected text object", () => {
+    const text = createDiagramObject(
+      { type: "text", x: 10, y: 20, id: "text" },
+      0,
+    );
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 40, y: 50, id: "rectangle" },
+      1,
+    );
+
+    expect(inlineTextEditCommitAction(text, "text", "Renamed")).toEqual({
+      type: "updateText",
+      text: "Renamed",
+    });
+    expect(inlineTextEditCommitAction(text, "text", "")).toEqual({
+      type: "updateText",
+      text: "",
+    });
+    expect(inlineTextEditCommitAction(text, "other", "Nope")).toBeNull();
+    expect(
+      inlineTextEditCommitAction(rectangle, "rectangle", "Nope"),
+    ).toBeNull();
+    expect(inlineTextEditCommitAction(null, "text", "Nope")).toBeNull();
+  });
+
+  it("positions the inline editor over the text object without mutating geometry", () => {
+    const text = createDiagramObject(
+      { type: "text", x: 10, y: 20, id: "text" },
+      0,
+    ) as TextObject;
+    text.width = 240;
+    text.height = 64;
+    text.rotation = 15;
+    text.style.fill = "#334155";
+    text.style.opacity = 0.75;
+    text.style.fontSize = 22;
+
+    expect(inlineTextEditorStyle(text)).toMatchObject({
+      left: 10,
+      top: 20,
+      width: 240,
+      minHeight: 64,
+      color: "#334155",
+      opacity: 0.75,
+      fontSize: 22,
+      transform: "rotate(15deg)",
     });
   });
 });

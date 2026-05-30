@@ -1,7 +1,10 @@
 import {
+  CSSProperties,
   Fragment,
   forwardRef,
+  KeyboardEvent,
   useImperativeHandle,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -59,6 +62,7 @@ type TriangleObject = Pick<
   BoxObject,
   "id" | "x" | "y" | "width" | "height" | "rotation"
 >;
+export type TextObject = BoxObject & { type: "text" };
 
 export const EditorCanvas = forwardRef<StageHandle, Props>(
   function EditorCanvas({ state, dispatch }, ref) {
@@ -66,9 +70,29 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
     const transformerRef = useRef<Konva.Transformer>(null);
     const [size, setSize] = useState({ width: 900, height: 640 });
     const selected = selectedObject(state);
+    const [inlineTextEdit, setInlineTextEdit] = useState<{
+      objectId: string;
+      value: string;
+    } | null>(null);
     const selectedLineLike =
       selected?.type === "line" || selected?.type === "arrow" ? selected : null;
     const selectedTriangle = selected?.type === "triangle" ? selected : null;
+    const inlineTextObject: TextObject | null =
+      inlineTextEdit &&
+      selected?.id === inlineTextEdit.objectId &&
+      isTextObject(selected)
+        ? selected
+        : null;
+
+    useEffect(() => {
+      if (!inlineTextEdit) return;
+      if (
+        selected?.id !== inlineTextEdit.objectId ||
+        selected.type !== "text"
+      ) {
+        setInlineTextEdit(null);
+      }
+    }, [inlineTextEdit, selected]);
 
     useImperativeHandle(ref, () => ({
       toPng: () => stageRef.current?.toDataURL({ pixelRatio: 2 }) ?? null,
@@ -135,6 +159,12 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                 hasCopiedStyle={Boolean(state.copiedStyle)}
                 dispatch={dispatch}
                 bindNode={bindNode}
+                onRequestTextEdit={() =>
+                  setInlineTextEdit({
+                    objectId: object.id,
+                    value: object.type === "text" ? (object.text ?? "") : "",
+                  })
+                }
               />
             ))}
             {selectedLineLike ? (
@@ -161,6 +191,25 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
             )}
           </Layer>
         </Stage>
+        {inlineTextObject && inlineTextEdit ? (
+          <InlineTextEditor
+            object={inlineTextObject}
+            value={inlineTextEdit.value}
+            onChange={(value) =>
+              setInlineTextEdit({ objectId: inlineTextObject.id, value })
+            }
+            onCommit={() => {
+              const action = inlineTextEditCommitAction(
+                inlineTextObject,
+                state.selectedId,
+                inlineTextEdit.value,
+              );
+              if (action) dispatch(action);
+              setInlineTextEdit(null);
+            }}
+            onCancel={() => setInlineTextEdit(null)}
+          />
+        ) : null}
         {state.objects.length === 0 ? (
           <div className="empty-canvas">Choose a tool and click the canvas</div>
         ) : null}
@@ -175,6 +224,7 @@ type DrawableProps = {
   hasCopiedStyle: boolean;
   dispatch: Dispatch<EditorAction>;
   bindNode: (node: Konva.Node | null, object: DiagramObject) => void;
+  onRequestTextEdit: () => void;
 };
 
 function DrawableObject({
@@ -183,6 +233,7 @@ function DrawableObject({
   hasCopiedStyle,
   dispatch,
   bindNode,
+  onRequestTextEdit,
 }: DrawableProps) {
   const common = {
     ref: (node: Konva.Node | null) => bindNode(node, object),
@@ -197,7 +248,9 @@ function DrawableObject({
     onClick: () =>
       hasCopiedStyle && selectedId && selectedId !== object.id
         ? dispatch({ type: "applyCopiedStyle", id: object.id })
-        : dispatch({ type: "select", id: object.id }),
+        : shouldStartInlineTextEdit(object, selectedId)
+          ? onRequestTextEdit()
+          : dispatch({ type: "select", id: object.id }),
     onTap: () => dispatch({ type: "select", id: object.id }),
     onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) =>
       dispatch({
@@ -242,8 +295,10 @@ function DrawableObject({
           fill={object.style.fill}
           strokeWidth={0}
           onDblClick={() => {
-            const text = window.prompt("Edit label", object.text ?? "");
-            if (text !== null) dispatch({ type: "updateText", text });
+            if (selectedId !== object.id) {
+              dispatch({ type: "select", id: object.id });
+            }
+            onRequestTextEdit();
           }}
         />
       );
@@ -266,6 +321,93 @@ function DrawableObject({
         />
       );
   }
+}
+
+type InlineTextEditorProps = {
+  object: TextObject;
+  value: string;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+};
+
+function InlineTextEditor({
+  object,
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+}: InlineTextEditorProps) {
+  const inputRef = useRef<{ focus: () => void; select: () => void } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [object.id]);
+
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onCommit();
+    }
+  }
+
+  return (
+    <textarea
+      ref={(node) => {
+        inputRef.current = node;
+      }}
+      aria-label="Edit text"
+      className="inline-text-editor"
+      value={value}
+      style={inlineTextEditorStyle(object)}
+      onChange={(event) => onChange(event.target.value)}
+      onBlur={onCommit}
+      onKeyDown={onKeyDown}
+    />
+  );
+}
+
+export function shouldStartInlineTextEdit(
+  object: DiagramObject,
+  selectedId: string | null,
+) {
+  return object.type === "text" && object.id === selectedId;
+}
+
+export function inlineTextEditCommitAction(
+  object: DiagramObject | null,
+  selectedId: string | null,
+  text: string,
+): EditorAction | null {
+  if (!object || object.type !== "text" || object.id !== selectedId) {
+    return null;
+  }
+  return { type: "updateText", text };
+}
+
+function isTextObject(object: DiagramObject): object is TextObject {
+  return object.type === "text";
+}
+
+export function inlineTextEditorStyle(object: TextObject): CSSProperties {
+  return {
+    left: object.x,
+    top: object.y,
+    width: object.width,
+    minHeight: object.height,
+    color: object.style.fill,
+    fontSize: object.style.fontSize ?? 18,
+    opacity: object.style.opacity,
+    transform: `rotate(${object.rotation}deg)`,
+  };
 }
 
 export type TriangleCorner = "right" | "horizontal" | "vertical";
