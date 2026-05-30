@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type Konva from "konva";
-import { createDiagramObject } from "../model/diagram";
-import type { DiagramObject, LineObject } from "../model/diagram";
+import { createDiagramObject, rightTrianglePoints } from "../model/diagram";
+import type { BoxObject, DiagramObject, LineObject } from "../model/diagram";
 import type { TextObject } from "./EditorCanvas";
 import {
   canvasPointerAction,
@@ -26,6 +26,7 @@ type EllipseObject = DiagramObject & {
 };
 type EllipsePatch = Partial<EllipseObject> &
   Pick<EllipseObject, "x" | "y" | "rotation" | "width" | "height">;
+type TriangleObject = BoxObject & { type: "triangle" };
 
 function expectEllipsePatch(
   patch: Partial<DiagramObject> | null,
@@ -56,6 +57,51 @@ function fakeKonvaTarget({
         name: () => name,
       };
   return node as unknown as Konva.Node;
+}
+
+function rotatePoint(x: number, y: number, degrees: number) {
+  const radians = degrees * (Math.PI / 180);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
+  };
+}
+
+function renderedTriangleCornerPosition(
+  triangle: TriangleObject,
+  corner: "right" | "horizontal" | "vertical",
+) {
+  const points = rightTrianglePoints(triangle);
+  const pointIndex = corner === "right" ? 0 : corner === "horizontal" ? 2 : 4;
+  const rotated = rotatePoint(
+    points[pointIndex],
+    points[pointIndex + 1],
+    triangle.rotation,
+  );
+  return {
+    x: triangle.x + rotated.x,
+    y: triangle.y + rotated.y,
+  };
+}
+
+function expectHandleOnRenderedCorner(
+  triangle: TriangleObject,
+  corner: "right" | "horizontal" | "vertical",
+) {
+  const handle = triangleCornerHandlePosition(triangle, corner);
+  const rendered = renderedTriangleCornerPosition(triangle, corner);
+
+  expect(handle.x).toBeCloseTo(rendered.x);
+  expect(handle.y).toBeCloseTo(rendered.y);
+}
+
+function applyTrianglePatch(
+  triangle: TriangleObject,
+  patch: Partial<DiagramObject>,
+): TriangleObject {
+  return { ...triangle, ...patch, type: "triangle" };
 }
 
 describe("canvas pointer handling", () => {
@@ -493,6 +539,25 @@ describe("triangle corner helpers", () => {
     });
   });
 
+  it("keeps the horizontal marker on the rendered horizontal endpoint after off-axis resizing", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    const patch = triangleCornerDragPatch(triangle, "horizontal", 210, 55);
+    const resized = applyTrianglePatch(triangle as TriangleObject, patch);
+
+    expectHandleOnRenderedCorner(resized, "right");
+    expectHandleOnRenderedCorner(resized, "horizontal");
+    expectHandleOnRenderedCorner(resized, "vertical");
+    expect(triangleCornerHandlePosition(resized, "horizontal")).toEqual({
+      x: 210,
+      y: 40,
+    });
+  });
+
   it("updates only the vertical leg when the vertical marker is dragged", () => {
     const triangle = createDiagramObject(
       { type: "triangle", x: 30, y: 40, id: "triangle" },
@@ -502,6 +567,25 @@ describe("triangle corner helpers", () => {
 
     expect(triangleCornerDragPatch(triangle, "vertical", 45, 200)).toEqual({
       height: 160,
+    });
+  });
+
+  it("keeps the vertical marker on the rendered vertical endpoint after off-axis resizing", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    const patch = triangleCornerDragPatch(triangle, "vertical", 45, 200);
+    const resized = applyTrianglePatch(triangle as TriangleObject, patch);
+
+    expectHandleOnRenderedCorner(resized, "right");
+    expectHandleOnRenderedCorner(resized, "horizontal");
+    expectHandleOnRenderedCorner(resized, "vertical");
+    expect(triangleCornerHandlePosition(resized, "vertical")).toEqual({
+      x: 30,
+      y: 200,
     });
   });
 
@@ -518,6 +602,71 @@ describe("triangle corner helpers", () => {
       width: 120,
       height: 90,
     });
+  });
+
+  it("keeps all markers on rendered corners after repeated right-triangle resize operations", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    const afterHorizontal = applyTrianglePatch(
+      triangle as TriangleObject,
+      triangleCornerDragPatch(triangle, "horizontal", 210, 55),
+    );
+    const afterVertical = applyTrianglePatch(
+      afterHorizontal,
+      triangleCornerDragPatch(afterHorizontal, "vertical", 25, 210),
+    );
+    const afterRight = applyTrianglePatch(
+      afterVertical,
+      triangleCornerDragPatch(afterVertical, "right", 50, 70),
+    );
+
+    expectHandleOnRenderedCorner(afterRight, "right");
+    expectHandleOnRenderedCorner(afterRight, "horizontal");
+    expectHandleOnRenderedCorner(afterRight, "vertical");
+  });
+
+  it("keeps rotated triangle markers on rendered corners after resizing", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 100, y: 200, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+    triangle.rotation = 45;
+
+    const horizontalHandle = triangleCornerHandlePosition(
+      triangle as TriangleObject,
+      "horizontal",
+    );
+    const afterHorizontal = applyTrianglePatch(
+      triangle as TriangleObject,
+      triangleCornerDragPatch(
+        triangle,
+        "horizontal",
+        horizontalHandle.x + 60,
+        horizontalHandle.y + 35,
+      ),
+    );
+    const verticalHandle = triangleCornerHandlePosition(
+      afterHorizontal,
+      "vertical",
+    );
+    const afterVertical = applyTrianglePatch(
+      afterHorizontal,
+      triangleCornerDragPatch(
+        afterHorizontal,
+        "vertical",
+        verticalHandle.x - 50,
+        verticalHandle.y + 45,
+      ),
+    );
+
+    expectHandleOnRenderedCorner(afterVertical, "right");
+    expectHandleOnRenderedCorner(afterVertical, "horizontal");
+    expectHandleOnRenderedCorner(afterVertical, "vertical");
   });
 
   it("keeps triangle legs positive after a corner drag crosses the opposite leg", () => {

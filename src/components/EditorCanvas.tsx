@@ -449,25 +449,33 @@ function TriangleCornerHandles({
                 event.cancelBubble = true;
               }}
               onDragMove={(event) => {
+                const patch = triangleCornerDragPatch(
+                  object,
+                  corner,
+                  event.target.x(),
+                  event.target.y(),
+                );
+                event.target.position(
+                  triangleCornerHandlePosition({ ...object, ...patch }, corner),
+                );
                 dispatch({
                   type: "updateSelected",
-                  patch: triangleCornerDragPatch(
-                    object,
-                    corner,
-                    event.target.x(),
-                    event.target.y(),
-                  ),
+                  patch,
                 });
               }}
               onDragEnd={(event) => {
+                const patch = triangleCornerDragPatch(
+                  object,
+                  corner,
+                  event.target.x(),
+                  event.target.y(),
+                );
+                event.target.position(
+                  triangleCornerHandlePosition({ ...object, ...patch }, corner),
+                );
                 dispatch({
                   type: "updateSelected",
-                  patch: triangleCornerDragPatch(
-                    object,
-                    corner,
-                    event.target.x(),
-                    event.target.y(),
-                  ),
+                  patch,
                 });
               }}
             />
