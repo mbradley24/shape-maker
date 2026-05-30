@@ -10,6 +10,8 @@ import {
   lineEndpointDragPatch,
   lineEndpointHandlePosition,
   lineLikeRenderProps,
+  triangleCornerDragPatch,
+  triangleCornerHandlePosition,
   transformedObjectPatch,
 } from "./EditorCanvas";
 
@@ -362,5 +364,102 @@ describe("line endpoint helpers", () => {
     expect(patch.points[1]).toBe(0);
     expect(patch.points[2]).toBeCloseTo(40);
     expect(patch.points[3]).toBeCloseTo(30);
+  });
+});
+
+describe("triangle corner helpers", () => {
+  it("places handles on the three right-triangle corners", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    expect(triangleCornerHandlePosition(triangle, "right")).toEqual({
+      x: 30,
+      y: 40,
+    });
+    expect(triangleCornerHandlePosition(triangle, "horizontal")).toEqual({
+      x: 170,
+      y: 40,
+    });
+    expect(triangleCornerHandlePosition(triangle, "vertical")).toEqual({
+      x: 30,
+      y: 160,
+    });
+  });
+
+  it("round-trips rotated triangle corner handles through local geometry", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 100, y: 200, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+    triangle.rotation = 90;
+
+    expect(triangleCornerHandlePosition(triangle, "horizontal").x).toBeCloseTo(
+      100,
+    );
+    expect(triangleCornerHandlePosition(triangle, "horizontal").y).toBeCloseTo(
+      340,
+    );
+    expect(triangleCornerHandlePosition(triangle, "vertical").x).toBeCloseTo(
+      -20,
+    );
+    expect(triangleCornerHandlePosition(triangle, "vertical").y).toBeCloseTo(
+      200,
+    );
+  });
+
+  it("updates only the horizontal leg when the horizontal marker is dragged", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    expect(triangleCornerDragPatch(triangle, "horizontal", 210, 55)).toEqual({
+      width: 180,
+    });
+  });
+
+  it("updates only the vertical leg when the vertical marker is dragged", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    expect(triangleCornerDragPatch(triangle, "vertical", 45, 200)).toEqual({
+      height: 160,
+    });
+  });
+
+  it("moves the right-angle corner and preserves fixed leg endpoints where practical", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    expect(triangleCornerDragPatch(triangle, "right", 50, 70)).toEqual({
+      x: 50,
+      y: 70,
+      width: 120,
+      height: 90,
+    });
+  });
+
+  it("keeps triangle legs positive after a corner drag crosses the opposite leg", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    expect(triangleCornerDragPatch(triangle, "right", 300, 300)).toMatchObject({
+      width: 8,
+      height: 8,
+    });
   });
 });
