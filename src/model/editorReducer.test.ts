@@ -4,6 +4,7 @@ import {
   defaultStyle,
   initialEditorState,
   lineMetrics,
+  rightTrianglePoints,
 } from "./diagram";
 import { editorReducer } from "./editorReducer";
 
@@ -38,11 +39,24 @@ describe("editorReducer", () => {
       state.objects.find((object) => object.type === "ellipse"),
     ).toMatchObject({ width: 120, height: 120 });
     expect(
+      state.objects.find((object) => object.type === "triangle"),
+    ).toMatchObject({ width: 140, height: 120 });
+    expect(
       state.objects.find((object) => object.type === "arrow"),
     ).toMatchObject({ points: [0, 0, 180, 0] });
     expect(
       state.objects.every((object) => Number.isFinite(object.rotation)),
     ).toBe(true);
+  });
+
+  it("creates triangles with right-angle render points", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 10, y: 20, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    expect(rightTrianglePoints(triangle)).toEqual([0, 0, 140, 0, 0, 120]);
   });
 
   it("nudges by the provided delta without moving unrelated objects", () => {

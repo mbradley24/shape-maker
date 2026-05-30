@@ -1,4 +1,9 @@
-import { DiagramObject, LineObject, sortByLayer } from "../model/diagram";
+import {
+  DiagramObject,
+  LineObject,
+  rightTrianglePoints,
+  sortByLayer,
+} from "../model/diagram";
 
 export function exportDiagramSvg(
   objects: DiagramObject[],
@@ -42,7 +47,7 @@ function objectToSvg(object: DiagramObject, arrowMarkerId?: string): string {
     case "ellipse":
       return `<ellipse ${transform} cx="${object.width / 2}" cy="${object.height / 2}" rx="${object.width / 2}" ry="${object.height / 2}" ${common} />`;
     case "triangle":
-      return `<polygon ${transform} points="${object.width / 2},0 ${object.width},${object.height} 0,${object.height}" ${common} />`;
+      return `<polygon ${transform} points="${svgPoints(rightTrianglePoints(object))}" ${common} />`;
     case "text":
       return `<text ${transform} x="0" y="${object.style.fontSize ?? 18}" font-size="${object.style.fontSize ?? 18}" fill="${escapeXml(object.style.fill)}" opacity="${object.style.opacity}">${escapeXml(object.text ?? "")}</text>`;
     case "line":
@@ -61,6 +66,14 @@ function lineToSvg(
   const [x1, y1, x2, y2] = object.points;
   const marker = arrowMarkerId ? ` marker-end="url(#${arrowMarkerId})"` : "";
   return `<line ${transform} x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ${common}${marker} />`;
+}
+
+function svgPoints(points: number[]): string {
+  const pairs: string[] = [];
+  for (let index = 0; index < points.length; index += 2) {
+    pairs.push(`${points[index]},${points[index + 1]}`);
+  }
+  return pairs.join(" ");
 }
 
 function escapeXml(value: string): string {

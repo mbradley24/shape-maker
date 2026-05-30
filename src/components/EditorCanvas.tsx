@@ -1,4 +1,10 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import {
+  Fragment,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import type { Dispatch } from "react";
 import {
   Arrow,
@@ -14,9 +20,11 @@ import {
 import type Konva from "konva";
 import { EditorAction } from "../model/editorReducer";
 import {
+  BoxObject,
   DiagramObject,
   EditorState,
   LineObject,
+  rightTrianglePoints,
   selectedObject,
   sortByLayer,
 } from "../model/diagram";
@@ -43,6 +51,14 @@ export const MIN_LINE_LIKE_HIT_STROKE_WIDTH = 16;
 const LINE_LIKE_HIT_PADDING = 12;
 const LINE_ENDPOINT_HANDLE_RADIUS = 6;
 const LINE_ENDPOINT_HANDLE_STROKE_WIDTH = 2;
+const TRIANGLE_CORNER_HANDLE_RADIUS = 7;
+const TRIANGLE_CORNER_HANDLE_STROKE_WIDTH = 2;
+const TRIANGLE_MIN_LEG_LENGTH = 8;
+
+type TriangleObject = Pick<
+  BoxObject,
+  "id" | "x" | "y" | "width" | "height" | "rotation"
+>;
 
 export const EditorCanvas = forwardRef<StageHandle, Props>(
   function EditorCanvas({ state, dispatch }, ref) {
@@ -52,6 +68,7 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
     const selected = selectedObject(state);
     const selectedLineLike =
       selected?.type === "line" || selected?.type === "arrow" ? selected : null;
+    const selectedTriangle = selected?.type === "triangle" ? selected : null;
 
     useImperativeHandle(ref, () => ({
       toPng: () => stageRef.current?.toDataURL({ pixelRatio: 2 }) ?? null,
@@ -80,7 +97,11 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
     function bindNode(node: Konva.Node | null, object: DiagramObject) {
       if (!node || object.id !== state.selectedId || !transformerRef.current)
         return;
-      if (object.type === "line" || object.type === "arrow") {
+      if (
+        object.type === "line" ||
+        object.type === "arrow" ||
+        object.type === "triangle"
+      ) {
         transformerRef.current.nodes([]);
         transformerRef.current.getLayer()?.batchDraw();
         return;
@@ -119,6 +140,11 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
             {selectedLineLike ? (
               <LineEndpointHandles
                 object={selectedLineLike}
+                dispatch={dispatch}
+              />
+            ) : selectedTriangle ? (
+              <TriangleCornerHandles
+                object={selectedTriangle}
                 dispatch={dispatch}
               />
             ) : (
@@ -204,20 +230,7 @@ function DrawableObject({
     case "ellipse":
       return <Ellipse {...common} {...ellipseRenderProps(object)} />;
     case "triangle":
-      return (
-        <Line
-          {...common}
-          points={[
-            object.width / 2,
-            0,
-            object.width,
-            object.height,
-            0,
-            object.height,
-          ]}
-          closed
-        />
-      );
+      return <Line {...common} points={rightTrianglePoints(object)} closed />;
     case "text":
       return (
         <Text
@@ -253,6 +266,83 @@ function DrawableObject({
         />
       );
   }
+}
+
+export type TriangleCorner = "right" | "horizontal" | "vertical";
+
+type TriangleCornerHandlesProps = {
+  object: TriangleObject;
+  dispatch: Dispatch<EditorAction>;
+};
+
+const TRIANGLE_CORNERS: Array<{ corner: TriangleCorner; label: string }> = [
+  { corner: "right", label: "Right" },
+  { corner: "horizontal", label: "Width" },
+  { corner: "vertical", label: "Height" },
+];
+
+function TriangleCornerHandles({
+  object,
+  dispatch,
+}: TriangleCornerHandlesProps) {
+  return (
+    <>
+      {TRIANGLE_CORNERS.map(({ corner, label }) => {
+        const { x, y } = triangleCornerHandlePosition(object, corner);
+        return (
+          <Fragment key={`${object.id}-${corner}-corner`}>
+            <Circle
+              name={`triangle-${corner}-corner-handle`}
+              x={x}
+              y={y}
+              radius={TRIANGLE_CORNER_HANDLE_RADIUS}
+              fill="#ffffff"
+              stroke="#7c3aed"
+              strokeWidth={TRIANGLE_CORNER_HANDLE_STROKE_WIDTH}
+              draggable
+              onPointerDown={(event) => {
+                event.cancelBubble = true;
+              }}
+              onClick={(event) => {
+                event.cancelBubble = true;
+              }}
+              onDragMove={(event) => {
+                dispatch({
+                  type: "updateSelected",
+                  patch: triangleCornerDragPatch(
+                    object,
+                    corner,
+                    event.target.x(),
+                    event.target.y(),
+                  ),
+                });
+              }}
+              onDragEnd={(event) => {
+                dispatch({
+                  type: "updateSelected",
+                  patch: triangleCornerDragPatch(
+                    object,
+                    corner,
+                    event.target.x(),
+                    event.target.y(),
+                  ),
+                });
+              }}
+            />
+            <Text
+              name={`triangle-${corner}-corner-label`}
+              x={x + 10}
+              y={y - 22}
+              text={label}
+              fontSize={12}
+              fill="#4c1d95"
+              listening={false}
+            />
+          </Fragment>
+        );
+      })}
+    </>
+  );
 }
 
 type LineEndpointHandlesProps = {
@@ -423,6 +513,65 @@ export function lineEndpointDragPatch(
   points[pointIndex] = point.x;
   points[pointIndex + 1] = point.y;
   return { points };
+}
+
+export function triangleCornerHandlePosition(
+  object: TriangleObject,
+  corner: TriangleCorner,
+) {
+  const point = triangleCornerLocalPosition(object, corner);
+  const rotated = rotatePoint(point.x, point.y, object.rotation);
+  return {
+    x: object.x + rotated.x,
+    y: object.y + rotated.y,
+  };
+}
+
+export function triangleCornerDragPatch(
+  object: TriangleObject,
+  corner: TriangleCorner,
+  handleX: number,
+  handleY: number,
+): Partial<DiagramObject> {
+  const local = rotatePoint(
+    handleX - object.x,
+    handleY - object.y,
+    -object.rotation,
+  );
+
+  switch (corner) {
+    case "horizontal":
+      return {
+        width: Math.max(TRIANGLE_MIN_LEG_LENGTH, local.x),
+      };
+    case "vertical":
+      return {
+        height: Math.max(TRIANGLE_MIN_LEG_LENGTH, local.y),
+      };
+    case "right": {
+      const originOffset = rotatePoint(local.x, local.y, object.rotation);
+      return {
+        x: object.x + originOffset.x,
+        y: object.y + originOffset.y,
+        width: Math.max(TRIANGLE_MIN_LEG_LENGTH, object.width - local.x),
+        height: Math.max(TRIANGLE_MIN_LEG_LENGTH, object.height - local.y),
+      };
+    }
+  }
+}
+
+function triangleCornerLocalPosition(
+  object: TriangleObject,
+  corner: TriangleCorner,
+) {
+  switch (corner) {
+    case "right":
+      return { x: 0, y: 0 };
+    case "horizontal":
+      return { x: object.width, y: 0 };
+    case "vertical":
+      return { x: 0, y: object.height };
+  }
 }
 
 export function isCanvasSurfaceTarget(target: Konva.Node) {

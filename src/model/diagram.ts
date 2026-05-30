@@ -209,6 +209,13 @@ export function lineMetrics(object: LineObject): {
   };
 }
 
+export function rightTrianglePoints(object: {
+  width: number;
+  height: number;
+}): [number, number, number, number, number, number] {
+  return [0, 0, object.width, 0, 0, object.height];
+}
+
 function cryptoId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();

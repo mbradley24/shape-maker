@@ -48,6 +48,20 @@ describe("exportDiagramSvg", () => {
     );
   });
 
+  it("exports triangles as right-angle polygons", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 12, y: 24, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    const svg = exportDiagramSvg([triangle], 640, 480);
+
+    expect(svg).toContain(
+      '<polygon transform="translate(12 24) rotate(0)" points="0,0 140,0 0,120"',
+    );
+  });
+
   it("handles an empty canvas intentionally", () => {
     expect(exportDiagramSvg([], 100, 80)).toContain('viewBox="0 0 100 80"');
   });
