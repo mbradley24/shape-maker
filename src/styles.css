@@ -24,7 +24,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -152,6 +153,20 @@ input {
   transform: translate(-50%, -50%);
   color: #64748b;
   pointer-events: none;
+}
+
+.inline-text-editor {
+  position: absolute;
+  z-index: 2;
+  transform-origin: top left;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  resize: none;
+  border: 1px solid #2563eb;
+  outline: 2px solid rgba(37, 99, 235, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  line-height: 1.2;
 }
 
 .inspector {
