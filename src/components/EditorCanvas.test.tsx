@@ -5,6 +5,7 @@ import type { BoxObject, DiagramObject, LineObject } from "../model/diagram";
 import type { TextObject } from "./EditorCanvas";
 import {
   canvasPointerAction,
+  dimensionEditCommitAction,
   dimensionGuide,
   dimensionLabel,
   draggedObjectPositionPatch,
@@ -15,6 +16,8 @@ import {
   lineEndpointDragPatch,
   lineEndpointHandlePosition,
   lineLikeRenderProps,
+  rectangleResizeDragPatch,
+  rectangleResizeHandlePosition,
   shouldStartInlineTextEdit,
   triangleCornerDragPatch,
   triangleCornerHandlePosition,
@@ -29,6 +32,7 @@ type EllipseObject = DiagramObject & {
 type EllipsePatch = Partial<EllipseObject> &
   Pick<EllipseObject, "x" | "y" | "rotation" | "width" | "height">;
 type TriangleObject = BoxObject & { type: "triangle" };
+type RectangleObject = BoxObject & { type: "rectangle" };
 
 function expectEllipsePatch(
   patch: Partial<DiagramObject> | null,
@@ -104,6 +108,13 @@ function applyTrianglePatch(
   patch: Partial<DiagramObject>,
 ): TriangleObject {
   return { ...triangle, ...patch, type: "triangle" };
+}
+
+function applyRectanglePatch(
+  rectangle: RectangleObject,
+  patch: Partial<DiagramObject>,
+): RectangleObject {
+  return { ...rectangle, ...patch, type: "rectangle" };
 }
 
 describe("canvas pointer handling", () => {
@@ -385,6 +396,181 @@ describe("transformedObjectPatch", () => {
   });
 });
 
+describe("rectangle resize helpers", () => {
+  it("places side and corner handles on the rendered rectangle edges", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 30, y: 40, id: "rectangle" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+
+    expect(rectangleResizeHandlePosition(rectangle, "top-left")).toEqual({
+      x: 30,
+      y: 40,
+    });
+    expect(rectangleResizeHandlePosition(rectangle, "top")).toEqual({
+      x: 110,
+      y: 40,
+    });
+    expect(rectangleResizeHandlePosition(rectangle, "right")).toEqual({
+      x: 190,
+      y: 88,
+    });
+    expect(rectangleResizeHandlePosition(rectangle, "bottom")).toEqual({
+      x: 110,
+      y: 136,
+    });
+  });
+
+  it("updates only width when the right side handle is dragged", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 30, y: 40, id: "rectangle" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+
+    expect(rectangleResizeDragPatch(rectangle, "right", 230, 130)).toEqual({
+      x: 30,
+      y: 40,
+      width: 200,
+      height: 96,
+    });
+  });
+
+  it("moves the left side while preserving the right edge", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 30, y: 40, id: "rectangle" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+
+    const rightBefore = rectangleResizeHandlePosition(rectangle, "right");
+    const patch = rectangleResizeDragPatch(rectangle, "left", 10, 150);
+    const resized = applyRectanglePatch(rectangle as RectangleObject, patch);
+
+    expect(patch).toEqual({
+      x: 10,
+      y: 40,
+      width: 180,
+      height: 96,
+    });
+    expect(rectangleResizeHandlePosition(resized, "right")).toEqual(
+      rightBefore,
+    );
+  });
+
+  it("moves a corner while preserving the opposite corner", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 30, y: 40, id: "rectangle" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+
+    const bottomRightBefore = rectangleResizeHandlePosition(
+      rectangle,
+      "bottom-right",
+    );
+    const patch = rectangleResizeDragPatch(rectangle, "top-left", 50, 60);
+    const resized = applyRectanglePatch(rectangle as RectangleObject, patch);
+
+    expect(patch).toEqual({
+      x: 50,
+      y: 60,
+      width: 140,
+      height: 76,
+    });
+    expect(rectangleResizeHandlePosition(resized, "bottom-right")).toEqual(
+      bottomRightBefore,
+    );
+  });
+
+  it("preserves the opposite corner while resizing a rotated rectangle", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 100, y: 200, id: "rectangle" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+    rectangle.rotation = 45;
+    rectangle.width = 120;
+    rectangle.height = 80;
+
+    const bottomRightBefore = rectangleResizeHandlePosition(
+      rectangle,
+      "bottom-right",
+    );
+    const topLeftOffset = rotatePoint(20, 10, rectangle.rotation);
+    const patch = rectangleResizeDragPatch(
+      rectangle,
+      "top-left",
+      rectangle.x + topLeftOffset.x,
+      rectangle.y + topLeftOffset.y,
+    );
+    const resized = applyRectanglePatch(rectangle as RectangleObject, patch);
+    const bottomRightAfter = rectangleResizeHandlePosition(
+      resized,
+      "bottom-right",
+    );
+
+    expect(patch.width).toBeCloseTo(100);
+    expect(patch.height).toBeCloseTo(70);
+    expect(bottomRightAfter.x).toBeCloseTo(bottomRightBefore.x);
+    expect(bottomRightAfter.y).toBeCloseTo(bottomRightBefore.y);
+  });
+
+  it("resizes a rotated side handle along local width only", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 100, y: 200, id: "rectangle" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+    rectangle.rotation = 30;
+
+    const leftBefore = rectangleResizeHandlePosition(rectangle, "left");
+    const rightHandle = rectangleResizeHandlePosition(rectangle, "right");
+    const dragOffset = rotatePoint(40, 30, rectangle.rotation);
+    const patch = rectangleResizeDragPatch(
+      rectangle,
+      "right",
+      rightHandle.x + dragOffset.x,
+      rightHandle.y + dragOffset.y,
+    );
+    const resized = applyRectanglePatch(rectangle as RectangleObject, patch);
+
+    expect(patch.x).toBeCloseTo(rectangle.x);
+    expect(patch.y).toBeCloseTo(rectangle.y);
+    expect(patch.width).toBeCloseTo(rectangle.width + 40);
+    expect(patch.height).toBe(rectangle.height);
+    expect(rectangleResizeHandlePosition(resized, "left").x).toBeCloseTo(
+      leftBefore.x,
+    );
+    expect(rectangleResizeHandlePosition(resized, "left").y).toBeCloseTo(
+      leftBefore.y,
+    );
+  });
+
+  it("enforces the minimum size when a side drag crosses the opposite edge", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 30, y: 40, id: "rectangle" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+
+    const rightBefore = rectangleResizeHandlePosition(rectangle, "right");
+    const patch = rectangleResizeDragPatch(rectangle, "left", 300, 88);
+    const resized = applyRectanglePatch(rectangle as RectangleObject, patch);
+
+    expect(patch).toEqual({
+      x: 182,
+      y: 40,
+      width: 8,
+      height: 96,
+    });
+    expect(rectangleResizeHandlePosition(resized, "right")).toEqual(
+      rightBefore,
+    );
+  });
+});
+
 describe("lineLikeRenderProps", () => {
   it.each([
     ["horizontal", [0, 0, 180, 0]],
@@ -432,7 +618,7 @@ describe("lineLikeRenderProps", () => {
 });
 
 describe("dimension helpers", () => {
-  it("renders rectangle side dimensions from current geometry", () => {
+  it("renders a rectangle width dimension with extension lines and arrows", () => {
     const rectangle = createDiagramObject(
       { type: "rectangle", x: 30, y: 40, id: "rect" },
       0,
@@ -441,13 +627,50 @@ describe("dimension helpers", () => {
 
     const guide = dimensionGuide(rectangle, "width");
 
-    expect(dimensionLabel(rectangle, "width")).toBe("225 px side");
-    expect(guide.start).toEqual({ x: 30, y: 18 });
-    expect(guide.end).toEqual({ x: 255, y: 18 });
-    expect(guide.text).toBe("225 px side");
+    expect(guide.text).toBe("225");
+    expect(dimensionLabel(rectangle, "width")).toBe("225");
+    expect(guide.extensions[0].start).toEqual({ x: 30, y: 36 });
+    expect(guide.extensions[0].end).toEqual({ x: 30, y: 4 });
+    expect(guide.extensions[1].start).toEqual({ x: 255, y: 36 });
+    expect(guide.extensions[1].end).toEqual({ x: 255, y: 4 });
+    expect(guide.arrows[0].end).toEqual({ x: 30, y: 12 });
+    expect(guide.arrows[1].end).toEqual({ x: 255, y: 12 });
+    expect(guide.arrows[0].start.x).toBeLessThan(guide.arrows[1].start.x);
+    expect(guide.label.rotation).toBe(0);
   });
 
-  it("tracks direct ellipse resizing as diameter labels", () => {
+  it("breaks the dimension line around the value text", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 0, y: 100, id: "rect" },
+      0,
+    ) as BoxObject & { type: "rectangle" };
+    rectangle.width = 200;
+
+    const guide = dimensionGuide(rectangle, "width");
+
+    const gapStart = guide.arrows[0].start.x;
+    const gapEnd = guide.arrows[1].start.x;
+    expect(gapStart).toBeLessThan(100);
+    expect(gapEnd).toBeGreaterThan(100);
+    expect(guide.label.x).toBeGreaterThan(gapStart);
+    expect(guide.label.x).toBeLessThan(gapEnd);
+    expect(guide.label.y).toBeCloseTo(100 - 28 - 6);
+  });
+
+  it("places the value above an unbroken dimension line on narrow shapes", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 30, y: 40, id: "rect" },
+      0,
+    ) as BoxObject & { type: "rectangle" };
+    rectangle.width = 30;
+
+    const guide = dimensionGuide(rectangle, "width");
+
+    expect(guide.arrows[0].start).toEqual(guide.arrows[1].start);
+    expect(guide.label.y).toBeLessThan(guide.arrows[0].start.y);
+  });
+
+  it("labels ellipse dimensions as diameters", () => {
     const ellipse = createDiagramObject(
       { type: "ellipse", x: 10, y: 20, id: "ellipse" },
       0,
@@ -455,8 +678,8 @@ describe("dimension helpers", () => {
 
     const resized = { ...ellipse, width: 180, height: 90 };
 
-    expect(dimensionLabel(resized, "width")).toBe("180 px diameter");
-    expect(dimensionLabel(resized, "height")).toBe("90 px diameter");
+    expect(dimensionLabel(resized, "width")).toBe("⌀180");
+    expect(dimensionLabel(resized, "height")).toBe("⌀90");
   });
 
   it("keeps rotated triangle leg dimensions attached to the rendered leg", () => {
@@ -468,11 +691,42 @@ describe("dimension helpers", () => {
 
     const guide = dimensionGuide(triangle, "height");
 
-    expect(dimensionLabel(triangle, "height")).toBe("120 px leg");
-    expect(guide.start.x).toBeCloseTo(100);
-    expect(guide.start.y).toBeCloseTo(178);
-    expect(guide.end.x).toBeCloseTo(-20);
-    expect(guide.end.y).toBeCloseTo(178);
+    expect(dimensionLabel(triangle, "height")).toBe("120");
+    expect(guide.arrows[0].end.x).toBeCloseTo(100);
+    expect(guide.arrows[0].end.y).toBeCloseTo(172);
+    expect(guide.arrows[1].end.x).toBeCloseTo(-20);
+    expect(guide.arrows[1].end.y).toBeCloseTo(172);
+    expect(guide.label.rotation).toBe(0);
+  });
+
+  it("commits an edited dimension value for the selected shape", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "rect" },
+      0,
+    );
+
+    expect(
+      dimensionEditCommitAction(rectangle, "rect", "width", "320"),
+    ).toEqual({
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 320,
+    });
+  });
+
+  it("ignores dimension edits for unselected shapes or invalid values", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "rect" },
+      0,
+    );
+
+    expect(dimensionEditCommitAction(rectangle, "other", "width", "320")).toBe(
+      null,
+    );
+    expect(dimensionEditCommitAction(rectangle, "rect", "width", "abc")).toBe(
+      null,
+    );
+    expect(dimensionEditCommitAction(null, "rect", "width", "320")).toBe(null);
   });
 });
 

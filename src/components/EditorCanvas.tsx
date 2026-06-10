@@ -58,8 +58,24 @@ const LINE_ENDPOINT_HANDLE_STROKE_WIDTH = 2;
 const TRIANGLE_CORNER_HANDLE_RADIUS = 7;
 const TRIANGLE_CORNER_HANDLE_STROKE_WIDTH = 2;
 const TRIANGLE_MIN_LEG_LENGTH = 8;
+const RECTANGLE_RESIZE_HANDLE_RADIUS = 6;
+const RECTANGLE_RESIZE_HANDLE_STROKE_WIDTH = 2;
+const RECTANGLE_MIN_SIDE_LENGTH = 8;
+const DIMENSION_OFFSET = 28;
+const DIMENSION_EXTENSION_GAP = 4;
+const DIMENSION_EXTENSION_OVERSHOOT = 8;
+const DIMENSION_FONT_SIZE = 12;
+const DIMENSION_TEXT_GAP_PADDING = 5;
+const DIMENSION_MIN_ARROW_SEGMENT = 12;
+const DIMENSION_ARROW_POINTER_LENGTH = 9;
+const DIMENSION_ARROW_POINTER_WIDTH = 5;
+const DIMENSION_COLOR = "#1e293b";
 
 type TriangleObject = Pick<
+  BoxObject,
+  "id" | "x" | "y" | "width" | "height" | "rotation"
+>;
+type RectangleObject = Pick<
   BoxObject,
   "id" | "x" | "y" | "width" | "height" | "rotation"
 >;
@@ -75,9 +91,22 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
       objectId: string;
       value: string;
     } | null>(null);
+    const [dimensionEdit, setDimensionEdit] = useState<{
+      objectId: string;
+      dimension: ShapeDimension;
+      value: string;
+    } | null>(null);
+    const dimensionEditObject = dimensionEdit
+      ? (state.objects.find(
+          (object): object is DimensionableObject =>
+            object.id === dimensionEdit.objectId &&
+            isDimensionableObject(object),
+        ) ?? null)
+      : null;
     const selectedLineLike =
       selected?.type === "line" || selected?.type === "arrow" ? selected : null;
     const selectedTriangle = selected?.type === "triangle" ? selected : null;
+    const selectedRectangle = selected?.type === "rectangle" ? selected : null;
     const inlineTextObject: TextObject | null =
       inlineTextEdit &&
       selected?.id === inlineTextEdit.objectId &&
@@ -167,7 +196,23 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                     })
                   }
                 />
-                <DimensionOverlay object={object} />
+                <DimensionOverlay
+                  object={object}
+                  dispatch={dispatch}
+                  onEditDimension={(dimension) => {
+                    if (!isDimensionableObject(object)) return;
+                    dispatch({ type: "select", id: object.id });
+                    setDimensionEdit({
+                      objectId: object.id,
+                      dimension,
+                      value: String(
+                        Math.round(
+                          dimension === "width" ? object.width : object.height,
+                        ),
+                      ),
+                    });
+                  }}
+                />
               </Fragment>
             ))}
             {selectedLineLike ? (
@@ -180,6 +225,18 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                 object={selectedTriangle}
                 dispatch={dispatch}
               />
+            ) : selectedRectangle ? (
+              <>
+                <RectangleResizeHandles
+                  object={selectedRectangle}
+                  dispatch={dispatch}
+                />
+                <Transformer
+                  ref={transformerRef}
+                  rotateEnabled
+                  enabledAnchors={[]}
+                />
+              </>
             ) : (
               <Transformer
                 ref={transformerRef}
@@ -211,6 +268,25 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
               setInlineTextEdit(null);
             }}
             onCancel={() => setInlineTextEdit(null)}
+          />
+        ) : null}
+        {dimensionEditObject && dimensionEdit ? (
+          <DimensionValueEditor
+            object={dimensionEditObject}
+            dimension={dimensionEdit.dimension}
+            value={dimensionEdit.value}
+            onChange={(value) => setDimensionEdit({ ...dimensionEdit, value })}
+            onCommit={() => {
+              const action = dimensionEditCommitAction(
+                dimensionEditObject,
+                state.selectedId,
+                dimensionEdit.dimension,
+                dimensionEdit.value,
+              );
+              if (action) dispatch(action);
+              setDimensionEdit(null);
+            }}
+            onCancel={() => setDimensionEdit(null)}
           />
         ) : null}
         {state.objects.length === 0 ? (
@@ -326,7 +402,17 @@ function DrawableObject({
   }
 }
 
-function DimensionOverlay({ object }: { object: DiagramObject }) {
+type DimensionOverlayProps = {
+  object: DiagramObject;
+  dispatch: Dispatch<EditorAction>;
+  onEditDimension: (dimension: ShapeDimension) => void;
+};
+
+function DimensionOverlay({
+  object,
+  dispatch,
+  onEditDimension,
+}: DimensionOverlayProps) {
   if (!isDimensionableObject(object) || !object.dimensions?.length) {
     return null;
   }
@@ -335,34 +421,147 @@ function DimensionOverlay({ object }: { object: DiagramObject }) {
     <>
       {object.dimensions.map((dimension) => {
         const guide = dimensionGuide(object, dimension);
-        if (!guide) return null;
         return (
           <Fragment key={`${object.id}-${dimension}-dimension`}>
-            <Line
-              name={`dimension-${object.id}-${dimension}-line`}
-              points={[guide.start.x, guide.start.y, guide.end.x, guide.end.y]}
-              stroke="#2563eb"
-              strokeWidth={1.5}
-              dash={[6, 4]}
-              listening={false}
-            />
+            {guide.extensions.map((extension, index) => (
+              <Line
+                key={`extension-${index}`}
+                name={`dimension-${object.id}-${dimension}-extension-${index}`}
+                points={[
+                  extension.start.x,
+                  extension.start.y,
+                  extension.end.x,
+                  extension.end.y,
+                ]}
+                stroke={DIMENSION_COLOR}
+                strokeWidth={1}
+                listening={false}
+              />
+            ))}
+            {guide.arrows.map((arrow, index) => (
+              <Arrow
+                key={`arrow-${index}`}
+                name={`dimension-${object.id}-${dimension}-arrow-${index}`}
+                points={[
+                  arrow.start.x,
+                  arrow.start.y,
+                  arrow.end.x,
+                  arrow.end.y,
+                ]}
+                stroke={DIMENSION_COLOR}
+                fill={DIMENSION_COLOR}
+                strokeWidth={1}
+                pointerLength={DIMENSION_ARROW_POINTER_LENGTH}
+                pointerWidth={DIMENSION_ARROW_POINTER_WIDTH}
+                listening={false}
+              />
+            ))}
             <Text
               name={`dimension-${object.id}-${dimension}-label`}
               x={guide.label.x}
               y={guide.label.y}
+              rotation={guide.label.rotation}
               text={guide.text}
-              fontSize={12}
-              fontStyle="bold"
-              fill="#1d4ed8"
-              padding={3}
-              align="center"
-              listening={false}
+              fontSize={DIMENSION_FONT_SIZE}
+              fill={DIMENSION_COLOR}
+              onClick={(event) => {
+                event.cancelBubble = true;
+                dispatch({ type: "select", id: object.id });
+              }}
+              onTap={(event) => {
+                event.cancelBubble = true;
+                dispatch({ type: "select", id: object.id });
+              }}
+              onDblClick={(event) => {
+                event.cancelBubble = true;
+                onEditDimension(dimension);
+              }}
+              onDblTap={(event) => {
+                event.cancelBubble = true;
+                onEditDimension(dimension);
+              }}
             />
           </Fragment>
         );
       })}
     </>
   );
+}
+
+type DimensionValueEditorProps = {
+  object: DimensionableObject;
+  dimension: ShapeDimension;
+  value: string;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+};
+
+function DimensionValueEditor({
+  object,
+  dimension,
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+}: DimensionValueEditorProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [object.id, dimension]);
+
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onCommit();
+    }
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      type="number"
+      aria-label={`Edit ${dimension} dimension`}
+      className="dimension-editor"
+      value={value}
+      style={dimensionEditorStyle(object, dimension)}
+      onChange={(event) => onChange(event.target.value)}
+      onBlur={onCommit}
+      onKeyDown={onKeyDown}
+    />
+  );
+}
+
+export function dimensionEditorStyle(
+  object: DimensionableObject,
+  dimension: ShapeDimension,
+): CSSProperties {
+  const guide = dimensionGuide(object, dimension);
+  return {
+    left: guide.label.x - 6,
+    top: guide.label.y - 6,
+  };
+}
+
+export function dimensionEditCommitAction(
+  object: DiagramObject | null,
+  selectedId: string | null,
+  dimension: ShapeDimension,
+  rawValue: string,
+): EditorAction | null {
+  if (!object || !isDimensionableObject(object) || object.id !== selectedId) {
+    return null;
+  }
+  const value = Number.parseFloat(rawValue);
+  if (!Number.isFinite(value)) return null;
+  return { type: "updateSelectedDimension", dimension, value };
 }
 
 type InlineTextEditorProps = {
@@ -453,6 +652,93 @@ export function inlineTextEditorStyle(object: TextObject): CSSProperties {
 }
 
 export type TriangleCorner = "right" | "horizontal" | "vertical";
+export type RectangleResizeHandle =
+  | "top-left"
+  | "top"
+  | "top-right"
+  | "right"
+  | "bottom-right"
+  | "bottom"
+  | "bottom-left"
+  | "left";
+
+type RectangleResizeHandlesProps = {
+  object: RectangleObject;
+  dispatch: Dispatch<EditorAction>;
+};
+
+const RECTANGLE_RESIZE_HANDLES: RectangleResizeHandle[] = [
+  "top-left",
+  "top",
+  "top-right",
+  "right",
+  "bottom-right",
+  "bottom",
+  "bottom-left",
+  "left",
+];
+
+function RectangleResizeHandles({
+  object,
+  dispatch,
+}: RectangleResizeHandlesProps) {
+  return (
+    <>
+      {RECTANGLE_RESIZE_HANDLES.map((handle) => {
+        const { x, y } = rectangleResizeHandlePosition(object, handle);
+        return (
+          <Circle
+            key={`${object.id}-${handle}-resize`}
+            name={`rectangle-${handle}-resize-handle`}
+            x={x}
+            y={y}
+            radius={RECTANGLE_RESIZE_HANDLE_RADIUS}
+            fill="#ffffff"
+            stroke="#0f766e"
+            strokeWidth={RECTANGLE_RESIZE_HANDLE_STROKE_WIDTH}
+            draggable
+            onPointerDown={(event) => {
+              event.cancelBubble = true;
+            }}
+            onClick={(event) => {
+              event.cancelBubble = true;
+            }}
+            onDragMove={(event) => {
+              const patch = rectangleResizeDragPatch(
+                object,
+                handle,
+                event.target.x(),
+                event.target.y(),
+              );
+              event.target.position(
+                rectangleResizeHandlePosition({ ...object, ...patch }, handle),
+              );
+              dispatch({
+                type: "updateSelected",
+                patch,
+              });
+            }}
+            onDragEnd={(event) => {
+              const patch = rectangleResizeDragPatch(
+                object,
+                handle,
+                event.target.x(),
+                event.target.y(),
+              );
+              event.target.position(
+                rectangleResizeHandlePosition({ ...object, ...patch }, handle),
+              );
+              dispatch({
+                type: "updateSelected",
+                patch,
+              });
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
 
 type TriangleCornerHandlesProps = {
   object: TriangleObject;
@@ -752,6 +1038,80 @@ export function triangleCornerDragPatch(
   }
 }
 
+export function rectangleResizeHandlePosition(
+  object: RectangleObject,
+  handle: RectangleResizeHandle,
+) {
+  const point = rectangleResizeHandleLocalPosition(object, handle);
+  const rotated = rotatePoint(point.x, point.y, object.rotation);
+  return {
+    x: object.x + rotated.x,
+    y: object.y + rotated.y,
+  };
+}
+
+export function rectangleResizeDragPatch(
+  object: RectangleObject,
+  handle: RectangleResizeHandle,
+  handleX: number,
+  handleY: number,
+): Pick<RectangleObject, "x" | "y" | "width" | "height"> {
+  const local = rotatePoint(
+    handleX - object.x,
+    handleY - object.y,
+    -object.rotation,
+  );
+  const movesLeft = handle.includes("left");
+  const movesRight = handle.includes("right");
+  const movesTop = handle.includes("top");
+  const movesBottom = handle.includes("bottom");
+
+  const left = movesLeft
+    ? Math.min(local.x, object.width - RECTANGLE_MIN_SIDE_LENGTH)
+    : 0;
+  const right = movesRight
+    ? Math.max(local.x, RECTANGLE_MIN_SIDE_LENGTH)
+    : object.width;
+  const top = movesTop
+    ? Math.min(local.y, object.height - RECTANGLE_MIN_SIDE_LENGTH)
+    : 0;
+  const bottom = movesBottom
+    ? Math.max(local.y, RECTANGLE_MIN_SIDE_LENGTH)
+    : object.height;
+  const originOffset = rotatePoint(left, top, object.rotation);
+
+  return {
+    x: object.x + originOffset.x,
+    y: object.y + originOffset.y,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function rectangleResizeHandleLocalPosition(
+  object: RectangleObject,
+  handle: RectangleResizeHandle,
+) {
+  switch (handle) {
+    case "top-left":
+      return { x: 0, y: 0 };
+    case "top":
+      return { x: object.width / 2, y: 0 };
+    case "top-right":
+      return { x: object.width, y: 0 };
+    case "right":
+      return { x: object.width, y: object.height / 2 };
+    case "bottom-right":
+      return { x: object.width, y: object.height };
+    case "bottom":
+      return { x: object.width / 2, y: object.height };
+    case "bottom-left":
+      return { x: 0, y: object.height };
+    case "left":
+      return { x: 0, y: object.height / 2 };
+  }
+}
+
 function triangleCornerLocalPosition(
   object: TriangleObject,
   corner: TriangleCorner,
@@ -766,7 +1126,7 @@ function triangleCornerLocalPosition(
   }
 }
 
-type DimensionableObject = BoxObject & {
+export type DimensionableObject = BoxObject & {
   type: "rectangle" | "ellipse" | "triangle";
 };
 
@@ -784,42 +1144,112 @@ export function dimensionLabel(
   object: DimensionableObject,
   dimension: ShapeDimension,
 ) {
-  const value = dimension === "width" ? object.width : object.height;
-  const label =
-    object.type === "triangle"
-      ? dimension === "width"
-        ? "leg"
-        : "leg"
-      : object.type === "ellipse"
-        ? "diameter"
-        : "side";
-  return `${Math.round(value)} px ${label}`;
+  const value = Math.round(
+    dimension === "width" ? object.width : object.height,
+  );
+  return object.type === "ellipse" ? `⌀${value}` : `${value}`;
 }
+
+type DimensionSegment = {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+};
+
+export type DimensionGuide = {
+  extensions: DimensionSegment[];
+  arrows: DimensionSegment[];
+  label: { x: number; y: number; rotation: number };
+  text: string;
+};
 
 export function dimensionGuide(
   object: DimensionableObject,
   dimension: ShapeDimension,
-) {
-  const offset = 22;
-  const textOffset = 14;
-  const local =
-    dimension === "width"
-      ? {
-          start: { x: 0, y: -offset },
-          end: { x: object.width, y: -offset },
-          label: { x: object.width / 2 - 34, y: -offset - textOffset },
-        }
-      : {
-          start: { x: -offset, y: 0 },
-          end: { x: -offset, y: object.height },
-          label: { x: -offset - 62, y: object.height / 2 - 8 },
-        };
+): DimensionGuide {
+  const text = dimensionLabel(object, dimension);
+  const textWidth = text.length * DIMENSION_FONT_SIZE * 0.62;
+  const halfGap = textWidth / 2 + DIMENSION_TEXT_GAP_PADDING;
 
+  if (dimension === "width") {
+    const lineY = -DIMENSION_OFFSET;
+    const mid = object.width / 2;
+    const textFitsInline = mid - halfGap >= DIMENSION_MIN_ARROW_SEGMENT;
+    return globalDimensionGuide(object, text, object.rotation, {
+      extensions: [
+        {
+          start: { x: 0, y: -DIMENSION_EXTENSION_GAP },
+          end: { x: 0, y: lineY - DIMENSION_EXTENSION_OVERSHOOT },
+        },
+        {
+          start: { x: object.width, y: -DIMENSION_EXTENSION_GAP },
+          end: { x: object.width, y: lineY - DIMENSION_EXTENSION_OVERSHOOT },
+        },
+      ],
+      arrows: [
+        {
+          start: { x: textFitsInline ? mid - halfGap : mid, y: lineY },
+          end: { x: 0, y: lineY },
+        },
+        {
+          start: { x: textFitsInline ? mid + halfGap : mid, y: lineY },
+          end: { x: object.width, y: lineY },
+        },
+      ],
+      label: {
+        x: mid - textWidth / 2,
+        y: textFitsInline
+          ? lineY - DIMENSION_FONT_SIZE / 2
+          : lineY - DIMENSION_FONT_SIZE - 6,
+      },
+    });
+  }
+
+  const lineX = -DIMENSION_OFFSET;
+  const mid = object.height / 2;
+  return globalDimensionGuide(object, text, 0, {
+    extensions: [
+      {
+        start: { x: -DIMENSION_EXTENSION_GAP, y: 0 },
+        end: { x: lineX - DIMENSION_EXTENSION_OVERSHOOT, y: 0 },
+      },
+      {
+        start: { x: -DIMENSION_EXTENSION_GAP, y: object.height },
+        end: { x: lineX - DIMENSION_EXTENSION_OVERSHOOT, y: object.height },
+      },
+    ],
+    arrows: [
+      { start: { x: lineX, y: mid }, end: { x: lineX, y: 0 } },
+      { start: { x: lineX, y: mid }, end: { x: lineX, y: object.height } },
+    ],
+    label: {
+      x: lineX - DIMENSION_TEXT_GAP_PADDING - textWidth,
+      y: mid - DIMENSION_FONT_SIZE / 2,
+    },
+  });
+}
+
+function globalDimensionGuide(
+  object: DimensionableObject,
+  text: string,
+  labelRotation: number,
+  local: {
+    extensions: DimensionSegment[];
+    arrows: DimensionSegment[];
+    label: { x: number; y: number };
+  },
+): DimensionGuide {
+  const toGlobal = (segment: DimensionSegment) => ({
+    start: rotateLocalPoint(object, segment.start),
+    end: rotateLocalPoint(object, segment.end),
+  });
   return {
-    start: rotateLocalPoint(object, local.start),
-    end: rotateLocalPoint(object, local.end),
-    label: rotateLocalPoint(object, local.label),
-    text: dimensionLabel(object, dimension),
+    extensions: local.extensions.map(toGlobal),
+    arrows: local.arrows.map(toGlobal),
+    label: {
+      ...rotateLocalPoint(object, local.label),
+      rotation: labelRotation,
+    },
+    text,
   };
 }
 
