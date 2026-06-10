@@ -8,7 +8,8 @@ Shape Maker is a macOS-first desktop diagram editor for quick mechanical sketchi
 - npm
 - Rust and Cargo for native Tauri builds
 
-This workspace currently has Node/npm available. Install Rust before running Tauri packaging commands.
+This workspace currently has Node/npm and Cargo available. On a fresh machine,
+install the Rust toolchain before running Tauri packaging commands.
 
 ## Development
 
@@ -56,4 +57,4 @@ Deferred:
 
 - Typed engineering dimensions and callouts
 - Mechanical symbols such as supports, loads, constraints, and moments
-- Windows packaging verification
+- Windows packaging verification and installer compatibility

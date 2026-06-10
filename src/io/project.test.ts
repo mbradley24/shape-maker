@@ -8,6 +8,7 @@ describe("project serialization", () => {
       { type: "rectangle", x: 10, y: 20, id: "rect" },
       1,
     );
+    rectangle.dimensions = ["width", "height"];
     const text = createDiagramObject(
       { type: "text", x: 30, y: 40, id: "label" },
       0,
@@ -25,6 +26,11 @@ describe("project serialization", () => {
       "label",
       "rect",
     ]);
+    expect(parsed.objects.find((object) => object.id === "rect")).toMatchObject(
+      {
+        dimensions: ["width", "height"],
+      },
+    );
     expect(
       parsed.objects.find((object) => object.id === "label"),
     ).toMatchObject({
@@ -60,5 +66,30 @@ describe("project serialization", () => {
     });
 
     expect(() => parseProject(raw)).toThrow("malformed points");
+  });
+
+  it("sanitizes persisted dimensions to supported measurement keys", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      document: defaultDocument,
+      objects: [
+        {
+          id: "rect",
+          type: "rectangle",
+          x: 0,
+          y: 0,
+          rotation: 0,
+          zIndex: 0,
+          style: { stroke: "#000", fill: "#fff", strokeWidth: 1, opacity: 1 },
+          width: 160,
+          height: 96,
+          dimensions: ["width", "depth", "height", "width"],
+        },
+      ],
+    });
+
+    expect(parseProject(raw).objects[0]).toMatchObject({
+      dimensions: ["width", "height"],
+    });
   });
 });

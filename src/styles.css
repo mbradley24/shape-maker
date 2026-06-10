@@ -105,6 +105,11 @@ textarea {
   color: #1d4ed8;
 }
 
+.command:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .command,
 .button-row button {
   height: 34px;
@@ -131,6 +136,14 @@ textarea {
   background: #fee2e2;
   color: #991b1b;
   border-bottom: 1px solid #fecaca;
+}
+
+.loading-strip {
+  padding: 7px 14px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-bottom: 1px solid #bfdbfe;
+  font-size: 13px;
 }
 
 .workspace {
@@ -167,6 +180,18 @@ textarea {
   outline: 2px solid rgba(37, 99, 235, 0.18);
   background: rgba(255, 255, 255, 0.92);
   line-height: 1.2;
+}
+
+.dimension-editor {
+  position: absolute;
+  z-index: 2;
+  width: 64px;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid #1e293b;
+  outline: 2px solid rgba(30, 41, 59, 0.18);
+  background: rgba(255, 255, 255, 0.95);
+  font-size: 12px;
 }
 
 .inspector {
@@ -241,4 +266,39 @@ textarea {
 .muted {
   color: #64748b;
   line-height: 1.4;
+}
+
+.muted.compact {
+  margin: -4px 0 10px;
+  font-size: 12px;
+}
+
+.dimension-toggle-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.dimension-toggle {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.dimension-toggle.active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.dimension-fields {
+  margin-top: 10px;
 }

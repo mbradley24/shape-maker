@@ -1,7 +1,12 @@
-import { ArrowDown, ArrowUp, Copy, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Ruler, Trash2 } from "lucide-react";
 import type { Dispatch } from "react";
 import { EditorAction } from "../model/editorReducer";
-import { DiagramObject, DiagramStyle, lineMetrics } from "../model/diagram";
+import {
+  DiagramObject,
+  DiagramStyle,
+  lineMetrics,
+  ShapeDimension,
+} from "../model/diagram";
 
 type Props = {
   selected: DiagramObject | null;
@@ -102,6 +107,55 @@ export function Inspector({ selected, copiedStyle, dispatch }: Props) {
         </label>
       ) : null}
 
+      {isDimensionable(selected) ? (
+        <>
+          <h3>Dimensions</h3>
+          <p className="muted compact">Canvas units are pixels.</p>
+          <div className="dimension-toggle-grid">
+            {(["width", "height"] as const).map((dimension) => {
+              const visible = selected.dimensions?.includes(dimension) ?? false;
+              return (
+                <button
+                  key={dimension}
+                  className={
+                    visible ? "dimension-toggle active" : "dimension-toggle"
+                  }
+                  onClick={() =>
+                    dispatch({
+                      type: "setSelectedDimension",
+                      dimension,
+                      visible: !visible,
+                    })
+                  }
+                >
+                  <Ruler size={15} />
+                  {dimensionButtonLabel(selected, dimension)}
+                </button>
+              );
+            })}
+          </div>
+          {selected.dimensions?.length ? (
+            <div className="field-grid dimension-fields">
+              {selected.dimensions.map((dimension) => (
+                <NumberField
+                  key={dimension}
+                  label={dimensionFieldLabel(selected, dimension)}
+                  value={selected[dimension]}
+                  min={8}
+                  onCommit={(value) =>
+                    dispatch({
+                      type: "updateSelectedDimension",
+                      dimension,
+                      value,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
       <h3>Style</h3>
       <div className="field-grid">
         <ColorField
@@ -164,6 +218,46 @@ export function Inspector({ selected, copiedStyle, dispatch }: Props) {
       </div>
     </aside>
   );
+}
+
+type DimensionableObject = DiagramObject & {
+  type: "rectangle" | "ellipse" | "triangle";
+  width: number;
+  height: number;
+};
+
+function isDimensionable(object: DiagramObject): object is DimensionableObject {
+  return (
+    object.type === "rectangle" ||
+    object.type === "ellipse" ||
+    object.type === "triangle"
+  );
+}
+
+function dimensionButtonLabel(
+  object: DimensionableObject,
+  dimension: ShapeDimension,
+) {
+  if (object.type === "ellipse") {
+    return dimension === "width" ? "Width diameter" : "Height diameter";
+  }
+  if (object.type === "triangle") {
+    return dimension === "width" ? "Horizontal leg" : "Vertical leg";
+  }
+  return dimension === "width" ? "Width side" : "Height side";
+}
+
+function dimensionFieldLabel(
+  object: DimensionableObject,
+  dimension: ShapeDimension,
+) {
+  if (object.type === "ellipse") {
+    return dimension === "width" ? "Diameter W" : "Diameter H";
+  }
+  if (object.type === "triangle") {
+    return dimension === "width" ? "Leg W" : "Leg H";
+  }
+  return dimension === "width" ? "Side W" : "Side H";
 }
 
 function NumberField({

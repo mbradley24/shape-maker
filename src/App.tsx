@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   Circle,
   MousePointer2,
@@ -21,7 +28,7 @@ import { exportDiagramSvg } from "./io/exporters";
 import { openProjectFile, saveTextFile } from "./io/files";
 
 const tools: Array<{ tool: Tool; label: string; icon: typeof Square }> = [
-  { tool: "select", label: "Select", icon: MousePointer2 },
+  { tool: "select", label: "Select (V)", icon: MousePointer2 },
   { tool: "rectangle", label: "Rectangle", icon: Square },
   { tool: "ellipse", label: "Circle", icon: Circle },
   { tool: "triangle", label: "Triangle", icon: TriangleRight },
@@ -30,129 +37,141 @@ const tools: Array<{ tool: Tool; label: string; icon: typeof Square }> = [
   { tool: "text", label: "Text", icon: Type },
 ];
 
+type AppShortcut =
+  | { type: "action"; action: Parameters<typeof editorReducer>[1] }
+  | { type: "saveProject" }
+  | { type: "loadProject" }
+  | { type: "exportPng" }
+  | { type: "exportSvg" };
+
+type ShortcutInput = Pick<
+  KeyboardEvent,
+  "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey"
+>;
+
 export function App() {
   const [state, dispatch] = useReducer(
     editorReducer,
     undefined,
     initialEditorState,
   );
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const stageRef = useRef<StageHandle>(null);
   const selected = useMemo(
     () =>
       state.objects.find((object) => object.id === state.selectedId) ?? null,
     [state.objects, state.selectedId],
   );
+  const isLoading = loadingMessage !== null;
+
+  const runFileTask = useCallback(
+    async (
+      message: string,
+      fallbackError: string,
+      task: () => Promise<void>,
+    ) => {
+      if (loadingMessage) return;
+      setLoadingMessage(message);
+      dispatch({ type: "setError", error: null });
+      try {
+        await task();
+      } catch (error) {
+        dispatch({
+          type: "setError",
+          error: error instanceof Error ? error.message : fallbackError,
+        });
+      } finally {
+        setLoadingMessage(null);
+      }
+    },
+    [loadingMessage],
+  );
 
   const saveProject = useCallback(async () => {
-    try {
-      await saveTextFile(
-        "shape-maker-project",
-        "diagram.shapemaker.json",
-        serializeProject(state.objects, state.document),
-      );
-      dispatch({ type: "markSaved" });
-    } catch (error) {
-      dispatch({
-        type: "setError",
-        error:
-          error instanceof Error ? error.message : "Could not save project.",
-      });
-    }
-  }, [state.document, state.objects]);
+    await runFileTask(
+      "Saving project...",
+      "Could not save project.",
+      async () => {
+        await saveTextFile(
+          "shape-maker-project",
+          "diagram.shapemaker.json",
+          serializeProject(state.objects, state.document),
+        );
+        dispatch({ type: "markSaved" });
+      },
+    );
+  }, [runFileTask, state.document, state.objects]);
 
   const loadProject = useCallback(async () => {
-    try {
-      const raw = await openProjectFile();
-      if (!raw) return;
-      const project = parseProject(raw);
-      dispatch({
-        type: "loadProject",
-        document: project.document,
-        objects: project.objects,
-      });
-    } catch (error) {
-      dispatch({
-        type: "setError",
-        error:
-          error instanceof Error ? error.message : "Could not open project.",
-      });
-    }
-  }, []);
+    await runFileTask(
+      "Opening project...",
+      "Could not open project.",
+      async () => {
+        const raw = await openProjectFile();
+        if (!raw) return;
+        const project = parseProject(raw);
+        dispatch({
+          type: "loadProject",
+          document: project.document,
+          objects: project.objects,
+        });
+      },
+    );
+  }, [runFileTask]);
 
   const exportSvg = useCallback(async () => {
-    const svg = exportDiagramSvg(
-      state.objects,
-      state.document.width,
-      state.document.height,
-    );
-    await saveTextFile("shape-maker-svg", "diagram.svg", svg);
-  }, [state.document.height, state.document.width, state.objects]);
+    await runFileTask("Exporting SVG...", "Could not export SVG.", async () => {
+      const svg = exportDiagramSvg(
+        state.objects,
+        state.document.width,
+        state.document.height,
+      );
+      await saveTextFile("shape-maker-svg", "diagram.svg", svg);
+    });
+  }, [runFileTask, state.document.height, state.document.width, state.objects]);
 
   const exportPng = useCallback(async () => {
-    const dataUrl = stageRef.current?.toPng();
-    if (!dataUrl) {
-      dispatch({
-        type: "setError",
-        error: "The canvas is not ready to export.",
-      });
-      return;
-    }
-    const link = document.createElement("a");
-    link.download = "diagram.png";
-    link.href = dataUrl;
-    link.click();
-  }, []);
+    await runFileTask("Exporting PNG...", "Could not export PNG.", async () => {
+      const dataUrl = stageRef.current?.toPng();
+      if (!dataUrl) {
+        throw new Error("The canvas is not ready to export.");
+      }
+      const link = document.createElement("a");
+      link.download = "diagram.png";
+      link.href = dataUrl;
+      link.click();
+    });
+  }, [runFileTask]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null;
-      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (isEditableShortcutTarget(target)) return;
 
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        void saveProject();
-        return;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        void loadProject();
-        return;
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
-        event.preventDefault();
-        dispatch({ type: "duplicateSelected" });
-        return;
-      }
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "c"
-      ) {
-        event.preventDefault();
-        dispatch({ type: "copySelectedStyle" });
-        return;
-      }
-      if (event.key === "Delete" || event.key === "Backspace") {
-        dispatch({ type: "deleteSelected" });
-        return;
-      }
+      const shortcut = appShortcutForKey(event);
+      if (!shortcut) return;
 
-      const step = event.shiftKey ? 10 : 1;
-      const nudges: Record<string, [number, number]> = {
-        ArrowUp: [0, -step],
-        ArrowDown: [0, step],
-        ArrowLeft: [-step, 0],
-        ArrowRight: [step, 0],
-      };
-      const nudge = nudges[event.key];
-      if (nudge) {
-        event.preventDefault();
-        dispatch({ type: "nudgeSelected", dx: nudge[0], dy: nudge[1] });
+      event.preventDefault();
+      switch (shortcut.type) {
+        case "action":
+          dispatch(shortcut.action);
+          return;
+        case "saveProject":
+          void saveProject();
+          return;
+        case "loadProject":
+          void loadProject();
+          return;
+        case "exportPng":
+          void exportPng();
+          return;
+        case "exportSvg":
+          void exportSvg();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [loadProject, saveProject]);
+  }, [exportPng, exportSvg, loadProject, saveProject]);
 
   return (
     <main className="app-shell">
@@ -172,6 +191,7 @@ export function App() {
               onClick={() => dispatch({ type: "setTool", tool })}
               title={label}
               aria-label={label}
+              aria-pressed={state.activeTool === tool}
             >
               <Icon size={18} />
             </button>
@@ -180,7 +200,7 @@ export function App() {
           <button
             className="tool"
             onClick={() => dispatch({ type: "copySelectedStyle" })}
-            title="Copy style"
+            title="Copy style (Cmd/Ctrl+Shift+C)"
             aria-label="Copy style"
           >
             <Paintbrush size={18} />
@@ -188,7 +208,7 @@ export function App() {
           <button
             className="tool"
             onClick={() => dispatch({ type: "duplicateSelected" })}
-            title="Duplicate"
+            title="Duplicate (Cmd/Ctrl+D)"
             aria-label="Duplicate"
           >
             <Square size={16} />
@@ -196,20 +216,33 @@ export function App() {
           </button>
         </div>
         <div className="filebar">
-          <button className="command" onClick={loadProject}>
+          <button
+            className="command"
+            onClick={loadProject}
+            disabled={isLoading}
+          >
             <Upload size={16} /> Open
           </button>
-          <button className="command" onClick={saveProject}>
+          <button
+            className="command"
+            onClick={saveProject}
+            disabled={isLoading}
+          >
             <Save size={16} /> Save
           </button>
-          <button className="command" onClick={exportPng}>
+          <button className="command" onClick={exportPng} disabled={isLoading}>
             <Download size={16} /> PNG
           </button>
-          <button className="command" onClick={exportSvg}>
+          <button className="command" onClick={exportSvg} disabled={isLoading}>
             <Download size={16} /> SVG
           </button>
         </div>
       </header>
+      {loadingMessage ? (
+        <div className="loading-strip" role="status" aria-live="polite">
+          {loadingMessage}
+        </div>
+      ) : null}
       {state.error ? <div className="error-strip">{state.error}</div> : null}
       <section className="workspace">
         <EditorCanvas ref={stageRef} state={state} dispatch={dispatch} />
@@ -225,4 +258,56 @@ export function App() {
 
 export function isShapeTool(tool: Tool): tool is ShapeType {
   return tool !== "select";
+}
+
+export function appShortcutForKey(input: ShortcutInput): AppShortcut | null {
+  const key = input.key.toLowerCase();
+  const command = input.metaKey || input.ctrlKey;
+
+  if (!command && !input.altKey && key === "v") {
+    return { type: "action", action: { type: "setTool", tool: "select" } };
+  }
+  if (command && !input.shiftKey && key === "s") {
+    return { type: "saveProject" };
+  }
+  if (command && !input.shiftKey && key === "o") {
+    return { type: "loadProject" };
+  }
+  if (command && !input.shiftKey && key === "d") {
+    return { type: "action", action: { type: "duplicateSelected" } };
+  }
+  if (command && !input.shiftKey && key === "e") {
+    return { type: "exportPng" };
+  }
+  if (command && input.shiftKey && key === "e") {
+    return { type: "exportSvg" };
+  }
+  if (command && input.shiftKey && key === "c") {
+    return { type: "action", action: { type: "copySelectedStyle" } };
+  }
+  if (input.key === "Delete" || input.key === "Backspace") {
+    return { type: "action", action: { type: "deleteSelected" } };
+  }
+
+  const step = input.shiftKey ? 10 : 1;
+  const nudges: Record<string, [number, number]> = {
+    ArrowUp: [0, -step],
+    ArrowDown: [0, step],
+    ArrowLeft: [-step, 0],
+    ArrowRight: [step, 0],
+  };
+  const nudge = nudges[input.key];
+  return nudge
+    ? {
+        type: "action",
+        action: { type: "nudgeSelected", dx: nudge[0], dy: nudge[1] },
+      }
+    : null;
+}
+
+export function isEditableShortcutTarget(target: HTMLElement | null): boolean {
+  if (!target || typeof target.closest !== "function") return false;
+  return Boolean(
+    target.closest("input, textarea, select, [contenteditable='true']"),
+  );
 }
