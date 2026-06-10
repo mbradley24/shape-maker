@@ -1017,6 +1017,31 @@ describe("shape handle styling", () => {
     expect(container.innerHTML).not.toContain("#7c3aed");
   });
 
+  it("renders triangle corner handles without text labels", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    const { container } = render(
+      <TriangleCornerHandles object={triangle} dispatch={vi.fn()} />,
+    );
+
+    expect(container.querySelectorAll('[name$="-corner-label"]')).toHaveLength(
+      0,
+    );
+    for (const corner of ["right", "horizontal", "vertical"]) {
+      expect(
+        container.querySelector(`[name="triangle-${corner}-corner-label"]`),
+      ).toBeNull();
+    }
+
+    expect(container.querySelectorAll('[name$="-corner-handle"]')).toHaveLength(
+      3,
+    );
+  });
+
   it("keeps line endpoint handles on their existing blue styling", () => {
     const line = createDiagramObject(
       { type: "line", x: 10, y: 20, id: "line" },
