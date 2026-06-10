@@ -678,7 +678,7 @@ const RECTANGLE_RESIZE_HANDLES: RectangleResizeHandle[] = [
   "left",
 ];
 
-function RectangleResizeHandles({
+export function RectangleResizeHandles({
   object,
   dispatch,
 }: RectangleResizeHandlesProps) {
@@ -751,7 +751,7 @@ const TRIANGLE_CORNERS: Array<{ corner: TriangleCorner; label: string }> = [
   { corner: "vertical", label: "Height" },
 ];
 
-function TriangleCornerHandles({
+export function TriangleCornerHandles({
   object,
   dispatch,
 }: TriangleCornerHandlesProps) {
@@ -767,7 +767,7 @@ function TriangleCornerHandles({
               y={y}
               radius={TRIANGLE_CORNER_HANDLE_RADIUS}
               fill="#ffffff"
-              stroke="#7c3aed"
+              stroke="#2563eb"
               strokeWidth={TRIANGLE_CORNER_HANDLE_STROKE_WIDTH}
               draggable
               onPointerDown={(event) => {
@@ -828,7 +828,10 @@ type LineEndpointHandlesProps = {
   dispatch: Dispatch<EditorAction>;
 };
 
-function LineEndpointHandles({ object, dispatch }: LineEndpointHandlesProps) {
+export function LineEndpointHandles({
+  object,
+  dispatch,
+}: LineEndpointHandlesProps) {
   return (
     <>
       {(["start", "end"] as const).map((endpoint) => {

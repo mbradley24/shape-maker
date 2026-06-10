@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { render } from "@testing-library/react";
 import type Konva from "konva";
 import { createDiagramObject, rightTrianglePoints } from "../model/diagram";
 import type { BoxObject, DiagramObject, LineObject } from "../model/diagram";
@@ -15,12 +16,15 @@ import {
   isCanvasSurfaceTarget,
   lineEndpointDragPatch,
   lineEndpointHandlePosition,
+  LineEndpointHandles,
   lineLikeRenderProps,
   rectangleResizeDragPatch,
   rectangleResizeHandlePosition,
+  RectangleResizeHandles,
   shouldStartInlineTextEdit,
   triangleCornerDragPatch,
   triangleCornerHandlePosition,
+  TriangleCornerHandles,
   transformedObjectPatch,
 } from "./EditorCanvas";
 
@@ -981,5 +985,77 @@ describe("triangle corner helpers", () => {
       width: 8,
       height: 8,
     });
+  });
+});
+
+describe("shape handle styling", () => {
+  it("renders every triangle corner handle with the shared blue stroke", () => {
+    const triangle = createDiagramObject(
+      { type: "triangle", x: 30, y: 40, id: "triangle" },
+      0,
+    );
+    if (triangle.type !== "triangle") throw new Error("expected triangle");
+
+    const { container } = render(
+      <TriangleCornerHandles object={triangle} dispatch={vi.fn()} />,
+    );
+
+    const handles = container.querySelectorAll('[name$="-corner-handle"]');
+    expect(handles).toHaveLength(3);
+
+    for (const corner of ["right", "horizontal", "vertical"]) {
+      const handle = container.querySelector(
+        `[name="triangle-${corner}-corner-handle"]`,
+      );
+      expect(handle).not.toBeNull();
+      expect(handle!.getAttribute("stroke")).toBe("#2563eb");
+      expect(handle!.getAttribute("fill")).toBe("#ffffff");
+      expect(handle!.getAttribute("radius")).toBe("7");
+      expect(handle!.getAttribute("stroke-width")).toBe("2");
+    }
+
+    expect(container.innerHTML).not.toContain("#7c3aed");
+  });
+
+  it("keeps line endpoint handles on their existing blue styling", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 10, y: 20, id: "line" },
+      0,
+    );
+    if (line.type !== "line") throw new Error("expected line");
+
+    const { container } = render(
+      <LineEndpointHandles object={line} dispatch={vi.fn()} />,
+    );
+
+    const handles = container.querySelectorAll('[name$="-endpoint-handle"]');
+    expect(handles).toHaveLength(2);
+    for (const handle of handles) {
+      expect(handle.getAttribute("stroke")).toBe("#2563eb");
+      expect(handle.getAttribute("fill")).toBe("#ffffff");
+      expect(handle.getAttribute("radius")).toBe("6");
+      expect(handle.getAttribute("stroke-width")).toBe("2");
+    }
+  });
+
+  it("keeps rectangle resize handles on their existing teal styling", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 10, y: 20, id: "rectangle" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+
+    const { container } = render(
+      <RectangleResizeHandles object={rectangle} dispatch={vi.fn()} />,
+    );
+
+    const handles = container.querySelectorAll('[name$="-resize-handle"]');
+    expect(handles).toHaveLength(8);
+    for (const handle of handles) {
+      expect(handle.getAttribute("stroke")).toBe("#0f766e");
+      expect(handle.getAttribute("fill")).toBe("#ffffff");
+      expect(handle.getAttribute("radius")).toBe("6");
+      expect(handle.getAttribute("stroke-width")).toBe("2");
+    }
   });
 });
