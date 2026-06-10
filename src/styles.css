@@ -105,6 +105,11 @@ textarea {
   color: #1d4ed8;
 }
 
+.command:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .command,
 .button-row button {
   height: 34px;
@@ -131,6 +136,14 @@ textarea {
   background: #fee2e2;
   color: #991b1b;
   border-bottom: 1px solid #fecaca;
+}
+
+.loading-strip {
+  padding: 7px 14px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-bottom: 1px solid #bfdbfe;
+  font-size: 13px;
 }
 
 .workspace {
