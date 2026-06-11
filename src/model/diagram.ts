@@ -243,6 +243,15 @@ export function formatDimensionValue(
     : `${value}`;
 }
 
+// Shared by the on-canvas indicator (top-left anchored) and the SVG export
+// (baseline anchored), so the two renderings stay visually in sync.
+export const UNIT_INDICATOR_LAYOUT = {
+  margin: 12,
+  baselineY: 24,
+  fontSize: 13,
+  color: "#1e293b",
+} as const;
+
 export function lineMetrics(object: LineObject): {
   dx: number;
   dy: number;

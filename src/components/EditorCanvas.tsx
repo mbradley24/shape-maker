@@ -5,6 +5,7 @@ import {
   KeyboardEvent,
   useImperativeHandle,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -34,6 +35,7 @@ import {
   selectedObject,
   ShapeDimension,
   sortByLayer,
+  UNIT_INDICATOR_LAYOUT,
 } from "../model/diagram";
 import { isShapeTool } from "../App";
 
@@ -73,8 +75,6 @@ const DIMENSION_MIN_ARROW_SEGMENT = 12;
 const DIMENSION_ARROW_POINTER_LENGTH = 9;
 const DIMENSION_ARROW_POINTER_WIDTH = 5;
 const DIMENSION_COLOR = "#1e293b";
-const UNIT_INDICATOR_MARGIN = 12;
-const UNIT_INDICATOR_FONT_SIZE = 13;
 
 type TriangleObject = Pick<
   BoxObject,
@@ -518,6 +518,10 @@ function DimensionValueEditor({
   onCancel,
 }: DimensionValueEditorProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const style = useMemo(
+    () => dimensionEditorStyle(object, dimension, measurement),
+    [object, dimension, measurement],
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -543,7 +547,7 @@ function DimensionValueEditor({
       aria-label={`Edit ${dimension} dimension`}
       className="dimension-editor"
       value={value}
-      style={dimensionEditorStyle(object, dimension, measurement)}
+      style={style}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onCommit}
       onKeyDown={onKeyDown}
@@ -1190,11 +1194,11 @@ export function UnitIndicator({ measurement }: UnitIndicatorProps) {
   return (
     <Text
       name="unit-indicator"
-      x={UNIT_INDICATOR_MARGIN}
-      y={UNIT_INDICATOR_MARGIN}
+      x={UNIT_INDICATOR_LAYOUT.margin}
+      y={UNIT_INDICATOR_LAYOUT.margin}
       text={`Units: ${measurement.unit}`}
-      fontSize={UNIT_INDICATOR_FONT_SIZE}
-      fill={DIMENSION_COLOR}
+      fontSize={UNIT_INDICATOR_LAYOUT.fontSize}
+      fill={UNIT_INDICATOR_LAYOUT.color}
       listening={false}
     />
   );

@@ -4,12 +4,8 @@ import {
   LineObject,
   rightTrianglePoints,
   sortByLayer,
+  UNIT_INDICATOR_LAYOUT,
 } from "../model/diagram";
-
-const UNIT_INDICATOR_X = 12;
-const UNIT_INDICATOR_BASELINE_Y = 24;
-const UNIT_INDICATOR_FONT_SIZE = 13;
-const UNIT_INDICATOR_COLOR = "#1e293b";
 
 export function exportDiagramSvg(
   objects: DiagramObject[],
@@ -35,7 +31,7 @@ export function exportDiagramSvg(
     .map((object) => objectToSvg(object, arrowMarkerIds.get(object.id)))
     .join("\n  ");
   const unitIndicator = measurement
-    ? `  <text x="${UNIT_INDICATOR_X}" y="${UNIT_INDICATOR_BASELINE_Y}" font-size="${UNIT_INDICATOR_FONT_SIZE}" fill="${UNIT_INDICATOR_COLOR}">Units: ${escapeXml(measurement.unit)}</text>`
+    ? `  <text x="${UNIT_INDICATOR_LAYOUT.margin}" y="${UNIT_INDICATOR_LAYOUT.baselineY}" font-size="${UNIT_INDICATOR_LAYOUT.fontSize}" fill="${UNIT_INDICATOR_LAYOUT.color}">Units: ${escapeXml(measurement.unit)}</text>`
     : null;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
