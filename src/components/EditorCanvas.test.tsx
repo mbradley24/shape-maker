@@ -7,8 +7,10 @@ import type { TextObject } from "./EditorCanvas";
 import {
   canvasPointerAction,
   dimensionEditCommitAction,
+  dimensionEditValue,
   dimensionGuide,
   dimensionLabel,
+  UnitIndicator,
   draggedObjectPositionPatch,
   ellipseRenderProps,
   inlineTextEditCommitAction,
@@ -701,6 +703,63 @@ describe("dimension helpers", () => {
     expect(guide.arrows[1].end.x).toBeCloseTo(-20);
     expect(guide.arrows[1].end.y).toBeCloseTo(172);
     expect(guide.label.rotation).toBe(0);
+  });
+
+  it("shows bare pixel labels while the measurement is uncalibrated", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "rect" },
+      0,
+    ) as RectangleObject;
+
+    expect(dimensionLabel(rectangle, "width")).toBe("160");
+    expect(
+      dimensionLabel(rectangle, "width", { unit: "in", pixelsPerUnit: null }),
+    ).toBe("160");
+    expect(
+      dimensionEditValue(rectangle, "width", {
+        unit: "in",
+        pixelsPerUnit: null,
+      }),
+    ).toBe("160");
+  });
+
+  it("labels dimensions with the calibrated unit value", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "rect" },
+      0,
+    ) as RectangleObject;
+    const measurement = { unit: "in", pixelsPerUnit: 160 / 5.25 } as const;
+
+    expect(dimensionLabel(rectangle, "width", measurement)).toBe("5.25 in");
+    expect(dimensionGuide(rectangle, "width", measurement).text).toBe(
+      "5.25 in",
+    );
+    expect(dimensionEditValue(rectangle, "width", measurement)).toBe("5.25");
+  });
+
+  it("keeps the diameter prefix ahead of calibrated ellipse labels", () => {
+    const ellipse = createDiagramObject(
+      { type: "ellipse", x: 0, y: 0, id: "ellipse" },
+      0,
+    ) as BoxObject & { type: "ellipse" };
+    const resized = { ...ellipse, width: 180, height: 90 };
+    const measurement = { unit: "in", pixelsPerUnit: 180 / 3.5 } as const;
+
+    expect(dimensionLabel(resized, "width", measurement)).toBe("⌀3.5 in");
+    expect(dimensionLabel(resized, "height", measurement)).toBe("⌀1.75 in");
+  });
+
+  it("renders the unit indicator only when a unit is set", () => {
+    const { container, rerender } = render(<UnitIndicator />);
+    expect(container.querySelector('[name="unit-indicator"]')).toBeNull();
+
+    rerender(
+      <UnitIndicator measurement={{ unit: "mm", pixelsPerUnit: null }} />,
+    );
+
+    const indicator = container.querySelector('[name="unit-indicator"]');
+    expect(indicator).not.toBeNull();
+    expect(indicator!.getAttribute("text")).toBe("Units: mm");
   });
 
   it("commits an edited dimension value for the selected shape", () => {

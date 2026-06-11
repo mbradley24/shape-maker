@@ -22,7 +22,14 @@ import {
 import { EditorCanvas, StageHandle } from "./components/EditorCanvas";
 import { Inspector } from "./components/Inspector";
 import { editorReducer } from "./model/editorReducer";
-import { initialEditorState, ShapeType, Tool } from "./model/diagram";
+import {
+  initialEditorState,
+  isCalibratedMeasurement,
+  isLengthUnit,
+  LENGTH_UNITS,
+  ShapeType,
+  Tool,
+} from "./model/diagram";
 import { parseProject, serializeProject } from "./io/project";
 import { exportDiagramSvg } from "./io/exporters";
 import { openProjectFile, saveTextFile } from "./io/files";
@@ -125,10 +132,17 @@ export function App() {
         state.objects,
         state.document.width,
         state.document.height,
+        state.document.measurement,
       );
       await saveTextFile("shape-maker-svg", "diagram.svg", svg);
     });
-  }, [runFileTask, state.document.height, state.document.width, state.objects]);
+  }, [
+    runFileTask,
+    state.document.height,
+    state.document.measurement,
+    state.document.width,
+    state.objects,
+  ]);
 
   const exportPng = useCallback(async () => {
     await runFileTask("Exporting PNG...", "Could not export PNG.", async () => {
@@ -216,6 +230,39 @@ export function App() {
           </button>
         </div>
         <div className="filebar">
+          <label className="unit-select">
+            Units
+            <select
+              aria-label="Diagram length unit"
+              value={state.document.measurement?.unit ?? ""}
+              disabled={isCalibratedMeasurement(state.document.measurement)}
+              title={
+                isCalibratedMeasurement(state.document.measurement)
+                  ? "Unit is locked after the scale is calibrated"
+                  : "Set the diagram length unit"
+              }
+              onChange={(event) =>
+                dispatch({
+                  type: "setMeasurementUnit",
+                  unit: isLengthUnit(event.target.value)
+                    ? event.target.value
+                    : null,
+                })
+              }
+            >
+              <option value="">px</option>
+              {LENGTH_UNITS.map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
+            </select>
+          </label>
+          {state.document.measurement ? (
+            <span className="unit-indicator" title="Diagram length unit">
+              {state.document.measurement.unit}
+            </span>
+          ) : null}
           <button
             className="command"
             onClick={loadProject}
@@ -249,6 +296,7 @@ export function App() {
         <Inspector
           selected={selected}
           copiedStyle={state.copiedStyle}
+          measurement={state.document.measurement}
           dispatch={dispatch}
         />
       </section>

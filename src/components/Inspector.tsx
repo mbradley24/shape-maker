@@ -2,19 +2,28 @@ import { ArrowDown, ArrowUp, Copy, Ruler, Trash2 } from "lucide-react";
 import type { Dispatch } from "react";
 import { EditorAction } from "../model/editorReducer";
 import {
+  DiagramMeasurement,
   DiagramObject,
   DiagramStyle,
+  isCalibratedMeasurement,
   lineMetrics,
+  pixelsToDimensionValue,
   ShapeDimension,
 } from "../model/diagram";
 
 type Props = {
   selected: DiagramObject | null;
   copiedStyle: DiagramStyle | null;
+  measurement?: DiagramMeasurement;
   dispatch: Dispatch<EditorAction>;
 };
 
-export function Inspector({ selected, copiedStyle, dispatch }: Props) {
+export function Inspector({
+  selected,
+  copiedStyle,
+  measurement,
+  dispatch,
+}: Props) {
   if (!selected) {
     return (
       <aside className="inspector">
@@ -110,7 +119,7 @@ export function Inspector({ selected, copiedStyle, dispatch }: Props) {
       {isDimensionable(selected) ? (
         <>
           <h3>Dimensions</h3>
-          <p className="muted compact">Canvas units are pixels.</p>
+          <p className="muted compact">{measurementHint(measurement)}</p>
           <div className="dimension-toggle-grid">
             {(["width", "height"] as const).map((dimension) => {
               const visible = selected.dimensions?.includes(dimension) ?? false;
@@ -139,9 +148,13 @@ export function Inspector({ selected, copiedStyle, dispatch }: Props) {
               {selected.dimensions.map((dimension) => (
                 <NumberField
                   key={dimension}
-                  label={dimensionFieldLabel(selected, dimension)}
-                  value={selected[dimension]}
-                  min={8}
+                  label={dimensionFieldLabel(selected, dimension, measurement)}
+                  value={pixelsToDimensionValue(
+                    selected[dimension],
+                    measurement,
+                  )}
+                  min={isCalibratedMeasurement(measurement) ? undefined : 8}
+                  step={isCalibratedMeasurement(measurement) ? 0.01 : 1}
                   onCommit={(value) =>
                     dispatch({
                       type: "updateSelectedDimension",
@@ -250,14 +263,33 @@ function dimensionButtonLabel(
 function dimensionFieldLabel(
   object: DimensionableObject,
   dimension: ShapeDimension,
+  measurement?: DiagramMeasurement,
 ) {
-  if (object.type === "ellipse") {
-    return dimension === "width" ? "Diameter W" : "Diameter H";
+  const base =
+    object.type === "ellipse"
+      ? dimension === "width"
+        ? "Diameter W"
+        : "Diameter H"
+      : object.type === "triangle"
+        ? dimension === "width"
+          ? "Leg W"
+          : "Leg H"
+        : dimension === "width"
+          ? "Side W"
+          : "Side H";
+  return isCalibratedMeasurement(measurement)
+    ? `${base} (${measurement.unit})`
+    : base;
+}
+
+function measurementHint(measurement?: DiagramMeasurement) {
+  if (!measurement) {
+    return "Canvas units are pixels.";
   }
-  if (object.type === "triangle") {
-    return dimension === "width" ? "Leg W" : "Leg H";
+  if (!isCalibratedMeasurement(measurement)) {
+    return `Enter the first dimension value to calibrate the ${measurement.unit} scale.`;
   }
-  return dimension === "width" ? "Side W" : "Side H";
+  return `Dimensions are shown in ${measurement.unit}.`;
 }
 
 function NumberField({

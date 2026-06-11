@@ -65,4 +65,40 @@ describe("exportDiagramSvg", () => {
   it("handles an empty canvas intentionally", () => {
     expect(exportDiagramSvg([], 100, 80)).toContain('viewBox="0 0 100 80"');
   });
+
+  it("renders the unit indicator once a unit is set", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 10, y: 20, id: "rect" },
+      0,
+    );
+
+    const svg = exportDiagramSvg([rectangle], 640, 480, {
+      unit: "in",
+      pixelsPerUnit: 160 / 5.25,
+    });
+
+    expect(svg).toContain(">Units: in</text>");
+    expect(svg.indexOf("</svg>")).toBeGreaterThan(svg.indexOf("Units: in"));
+  });
+
+  it("renders the unit indicator even before the scale is calibrated", () => {
+    const svg = exportDiagramSvg([], 640, 480, {
+      unit: "mm",
+      pixelsPerUnit: null,
+    });
+
+    expect(svg).toContain(">Units: mm</text>");
+  });
+
+  it("omits the unit indicator when no unit is set", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 10, y: 20, id: "rect" },
+      0,
+    );
+
+    expect(exportDiagramSvg([rectangle], 640, 480)).not.toContain("Units:");
+    expect(exportDiagramSvg([rectangle], 640, 480, null)).not.toContain(
+      "Units:",
+    );
+  });
 });
