@@ -6,6 +6,8 @@ import {
   DiagramStyle,
   EditorState,
   initialEditorState,
+  isCalibratedMeasurement,
+  LengthUnit,
   normalizeLayers,
   ShapeDimension,
   ShapeType,
@@ -36,6 +38,7 @@ export type EditorAction =
       dimension: ShapeDimension;
       value: number;
     }
+  | { type: "setMeasurementUnit"; unit: LengthUnit | null }
   | { type: "updateText"; text: string }
   | { type: "copySelectedStyle" }
   | { type: "applyCopiedStyle"; id: string }
@@ -103,9 +106,21 @@ export function editorReducer(
       );
     case "updateSelectedDimension":
       if (!state.selectedId) return state;
-      return updateObject(state, state.selectedId, (object) =>
-        updateObjectDimension(object, action.dimension, action.value),
-      );
+      return applySelectedDimensionValue(state, action.dimension, action.value);
+    case "setMeasurementUnit": {
+      if (isCalibratedMeasurement(state.document.measurement)) return state;
+      return {
+        ...state,
+        document: {
+          ...state.document,
+          measurement: action.unit
+            ? { unit: action.unit, pixelsPerUnit: null }
+            : undefined,
+        },
+        dirty: true,
+        error: null,
+      };
+    }
     case "updateText":
       if (!state.selectedId) return state;
       return updateObject(state, state.selectedId, (object) => {
@@ -205,6 +220,47 @@ function updateObjectDimension(
     ...object,
     [dimension]: Math.max(MIN_DIMENSION_VALUE, value),
   } as DiagramObject;
+}
+
+function applySelectedDimensionValue(
+  state: EditorState,
+  dimension: ShapeDimension,
+  value: number,
+): EditorState {
+  const selected = state.objects.find(
+    (object) => object.id === state.selectedId,
+  );
+  if (
+    !selected ||
+    !supportsDimension(selected, dimension) ||
+    !Number.isFinite(value)
+  ) {
+    return state;
+  }
+
+  const measurement = state.document.measurement;
+  if (measurement && !isCalibratedMeasurement(measurement)) {
+    if (value <= 0) return state;
+    return {
+      ...state,
+      document: {
+        ...state.document,
+        measurement: {
+          ...measurement,
+          pixelsPerUnit: selected[dimension] / value,
+        },
+      },
+      dirty: true,
+      error: null,
+    };
+  }
+
+  const pixels = isCalibratedMeasurement(measurement)
+    ? value * measurement.pixelsPerUnit
+    : value;
+  return updateObject(state, selected.id, (object) =>
+    updateObjectDimension(object, dimension, pixels),
+  );
 }
 
 function supportsDimension(

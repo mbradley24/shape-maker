@@ -131,6 +131,41 @@ textarea {
   line-height: 1;
 }
 
+.unit-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.unit-select select {
+  height: 34px;
+  padding: 0 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #111827;
+}
+
+.unit-select select:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.unit-indicator {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  background: #e2e8f0;
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .error-strip {
   padding: 8px 14px;
   background: #fee2e2;

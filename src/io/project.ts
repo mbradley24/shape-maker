@@ -1,7 +1,9 @@
 import {
   defaultDocument,
+  DiagramMeasurement,
   DiagramObject,
   DiagramProject,
+  isLengthUnit,
   PROJECT_VERSION,
   ShapeDimension,
   sortByLayer,
@@ -37,6 +39,7 @@ export function parseProject(raw: string): DiagramProject {
     throw new Error("Project file is missing document data.");
   }
 
+  const measurement = parseMeasurement(value.document.measurement);
   const document = {
     width: numberOr(value.document.width, defaultDocument.width),
     height: numberOr(value.document.height, defaultDocument.height),
@@ -44,6 +47,7 @@ export function parseProject(raw: string): DiagramProject {
       typeof value.document.title === "string"
         ? value.document.title
         : defaultDocument.title,
+    ...(measurement ? { measurement } : {}),
   };
 
   const objects = value.objects.map(parseObject);
@@ -130,6 +134,17 @@ function numberOr(value: unknown, fallback: number): number {
 
 function stringOr(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
+}
+
+function parseMeasurement(value: unknown): DiagramMeasurement | undefined {
+  if (!isObject(value) || !isLengthUnit(value.unit)) return undefined;
+  const pixelsPerUnit =
+    typeof value.pixelsPerUnit === "number" &&
+    Number.isFinite(value.pixelsPerUnit) &&
+    value.pixelsPerUnit > 0
+      ? value.pixelsPerUnit
+      : null;
+  return { unit: value.unit, pixelsPerUnit };
 }
 
 function parseDimensions(value: unknown): ShapeDimension[] | undefined {

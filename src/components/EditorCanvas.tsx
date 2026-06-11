@@ -5,6 +5,7 @@ import {
   KeyboardEvent,
   useImperativeHandle,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -24,13 +25,17 @@ import type Konva from "konva";
 import { EditorAction } from "../model/editorReducer";
 import {
   BoxObject,
+  DiagramMeasurement,
   DiagramObject,
   EditorState,
+  formatDimensionValue,
   LineObject,
+  pixelsToDimensionValue,
   rightTrianglePoints,
   selectedObject,
   ShapeDimension,
   sortByLayer,
+  UNIT_INDICATOR_LAYOUT,
 } from "../model/diagram";
 import { isShapeTool } from "../App";
 
@@ -181,6 +186,7 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
               height={size.height}
               fill="#f8fafc"
             />
+            <UnitIndicator measurement={state.document.measurement} />
             {sortByLayer(state.objects).map((object) => (
               <Fragment key={object.id}>
                 <DrawableObject
@@ -198,6 +204,7 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                 />
                 <DimensionOverlay
                   object={object}
+                  measurement={state.document.measurement}
                   dispatch={dispatch}
                   onEditDimension={(dimension) => {
                     if (!isDimensionableObject(object)) return;
@@ -205,10 +212,10 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                     setDimensionEdit({
                       objectId: object.id,
                       dimension,
-                      value: String(
-                        Math.round(
-                          dimension === "width" ? object.width : object.height,
-                        ),
+                      value: dimensionEditValue(
+                        object,
+                        dimension,
+                        state.document.measurement,
                       ),
                     });
                   }}
@@ -273,6 +280,7 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
         {dimensionEditObject && dimensionEdit ? (
           <DimensionValueEditor
             object={dimensionEditObject}
+            measurement={state.document.measurement}
             dimension={dimensionEdit.dimension}
             value={dimensionEdit.value}
             onChange={(value) => setDimensionEdit({ ...dimensionEdit, value })}
@@ -404,12 +412,14 @@ function DrawableObject({
 
 type DimensionOverlayProps = {
   object: DiagramObject;
+  measurement?: DiagramMeasurement;
   dispatch: Dispatch<EditorAction>;
   onEditDimension: (dimension: ShapeDimension) => void;
 };
 
 function DimensionOverlay({
   object,
+  measurement,
   dispatch,
   onEditDimension,
 }: DimensionOverlayProps) {
@@ -420,7 +430,7 @@ function DimensionOverlay({
   return (
     <>
       {object.dimensions.map((dimension) => {
-        const guide = dimensionGuide(object, dimension);
+        const guide = dimensionGuide(object, dimension, measurement);
         return (
           <Fragment key={`${object.id}-${dimension}-dimension`}>
             {guide.extensions.map((extension, index) => (
@@ -490,6 +500,7 @@ function DimensionOverlay({
 
 type DimensionValueEditorProps = {
   object: DimensionableObject;
+  measurement?: DiagramMeasurement;
   dimension: ShapeDimension;
   value: string;
   onChange: (value: string) => void;
@@ -499,6 +510,7 @@ type DimensionValueEditorProps = {
 
 function DimensionValueEditor({
   object,
+  measurement,
   dimension,
   value,
   onChange,
@@ -506,6 +518,10 @@ function DimensionValueEditor({
   onCancel,
 }: DimensionValueEditorProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const style = useMemo(
+    () => dimensionEditorStyle(object, dimension, measurement),
+    [object, dimension, measurement],
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -531,7 +547,7 @@ function DimensionValueEditor({
       aria-label={`Edit ${dimension} dimension`}
       className="dimension-editor"
       value={value}
-      style={dimensionEditorStyle(object, dimension)}
+      style={style}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onCommit}
       onKeyDown={onKeyDown}
@@ -542,8 +558,9 @@ function DimensionValueEditor({
 export function dimensionEditorStyle(
   object: DimensionableObject,
   dimension: ShapeDimension,
+  measurement?: DiagramMeasurement | null,
 ): CSSProperties {
-  const guide = dimensionGuide(object, dimension);
+  const guide = dimensionGuide(object, dimension, measurement);
   return {
     left: guide.label.x - 6,
     top: guide.label.y - 6,
@@ -1132,11 +1149,45 @@ export function isDimensionableObject(
 export function dimensionLabel(
   object: DimensionableObject,
   dimension: ShapeDimension,
+  measurement?: DiagramMeasurement | null,
 ) {
-  const value = Math.round(
+  const text = formatDimensionValue(
     dimension === "width" ? object.width : object.height,
+    measurement,
   );
-  return object.type === "ellipse" ? `⌀${value}` : `${value}`;
+  return object.type === "ellipse" ? `⌀${text}` : text;
+}
+
+export function dimensionEditValue(
+  object: DimensionableObject,
+  dimension: ShapeDimension,
+  measurement?: DiagramMeasurement | null,
+): string {
+  return String(
+    pixelsToDimensionValue(
+      dimension === "width" ? object.width : object.height,
+      measurement,
+    ),
+  );
+}
+
+type UnitIndicatorProps = {
+  measurement?: DiagramMeasurement | null;
+};
+
+export function UnitIndicator({ measurement }: UnitIndicatorProps) {
+  if (!measurement) return null;
+  return (
+    <Text
+      name="unit-indicator"
+      x={UNIT_INDICATOR_LAYOUT.margin}
+      y={UNIT_INDICATOR_LAYOUT.margin}
+      text={`Units: ${measurement.unit}`}
+      fontSize={UNIT_INDICATOR_LAYOUT.fontSize}
+      fill={UNIT_INDICATOR_LAYOUT.color}
+      listening={false}
+    />
+  );
 }
 
 type DimensionSegment = {
@@ -1154,8 +1205,9 @@ export type DimensionGuide = {
 export function dimensionGuide(
   object: DimensionableObject,
   dimension: ShapeDimension,
+  measurement?: DiagramMeasurement | null,
 ): DimensionGuide {
-  const text = dimensionLabel(object, dimension);
+  const text = dimensionLabel(object, dimension, measurement);
   const textWidth = text.length * DIMENSION_FONT_SIZE * 0.62;
   const halfGap = textWidth / 2 + DIMENSION_TEXT_GAP_PADDING;
 

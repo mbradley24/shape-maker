@@ -68,6 +68,73 @@ describe("project serialization", () => {
     expect(() => parseProject(raw)).toThrow("malformed points");
   });
 
+  it("round trips the global unit and calibrated scale", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 10, y: 20, id: "rect" },
+      0,
+    );
+    const document = {
+      ...defaultDocument,
+      measurement: { unit: "in" as const, pixelsPerUnit: 160 / 5.25 },
+    };
+
+    const parsed = parseProject(serializeProject([rectangle], document));
+
+    expect(parsed.document.measurement).toEqual({
+      unit: "in",
+      pixelsPerUnit: 160 / 5.25,
+    });
+    expect(parsed.objects[0]).toMatchObject({ width: 160, height: 96 });
+  });
+
+  it("round trips an uncalibrated unit selection", () => {
+    const document = {
+      ...defaultDocument,
+      measurement: { unit: "mm" as const, pixelsPerUnit: null },
+    };
+
+    const parsed = parseProject(serializeProject([], document));
+
+    expect(parsed.document.measurement).toEqual({
+      unit: "mm",
+      pixelsPerUnit: null,
+    });
+  });
+
+  it("opens legacy projects without unit metadata in pixel mode", () => {
+    const parsed = parseProject(serializeProject([], defaultDocument));
+
+    expect(parsed.document.measurement).toBeUndefined();
+    expect(parsed.document).not.toHaveProperty("measurement");
+  });
+
+  it("drops malformed measurement metadata instead of failing", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      document: {
+        ...defaultDocument,
+        measurement: { unit: "furlong", pixelsPerUnit: 12 },
+      },
+      objects: [],
+    });
+
+    expect(parseProject(raw).document.measurement).toBeUndefined();
+
+    const negativeScale = JSON.stringify({
+      version: 1,
+      document: {
+        ...defaultDocument,
+        measurement: { unit: "cm", pixelsPerUnit: -3 },
+      },
+      objects: [],
+    });
+
+    expect(parseProject(negativeScale).document.measurement).toEqual({
+      unit: "cm",
+      pixelsPerUnit: null,
+    });
+  });
+
   it("sanitizes persisted dimensions to supported measurement keys", () => {
     const raw = JSON.stringify({
       version: 1,

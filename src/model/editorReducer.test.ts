@@ -368,6 +368,175 @@ describe("editorReducer", () => {
   });
 });
 
+describe("measurement units and scale calibration", () => {
+  function stateWithRectangle(id = "rect") {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id,
+    });
+    return state;
+  }
+
+  it("keeps dimension edits in raw pixels while no unit is set", () => {
+    let state = stateWithRectangle();
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 244,
+    });
+
+    expect(state.document.measurement).toBeUndefined();
+    expect(state.objects[0]).toMatchObject({ width: 244, height: 96 });
+  });
+
+  it("sets the global unit without calibrating a scale", () => {
+    let state = stateWithRectangle();
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+
+    expect(state.document.measurement).toEqual({
+      unit: "in",
+      pixelsPerUnit: null,
+    });
+    expect(state.dirty).toBe(true);
+  });
+
+  it("allows switching the unit or returning to pixels before calibration", () => {
+    let state = stateWithRectangle();
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "mm" });
+
+    expect(state.document.measurement).toEqual({
+      unit: "mm",
+      pixelsPerUnit: null,
+    });
+
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: null });
+    expect(state.document.measurement).toBeUndefined();
+  });
+
+  it("calibrates the scale from the first dimension entry without resizing", () => {
+    let state = stateWithRectangle();
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 5.25,
+    });
+
+    expect(state.objects[0]).toMatchObject({ width: 160, height: 96 });
+    expect(state.document.measurement?.unit).toBe("in");
+    expect(state.document.measurement?.pixelsPerUnit).toBeCloseTo(
+      160 / 5.25,
+      10,
+    );
+  });
+
+  it("resizes subsequent dimension entries using the calibrated scale", () => {
+    let state = stateWithRectangle();
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 5.25,
+    });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "height",
+      value: 10.5,
+    });
+
+    const rectangle = state.objects[0];
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+    expect(rectangle.height).toBeCloseTo(320, 10);
+    expect(rectangle.height).toBeCloseTo(rectangle.width * 2, 10);
+    expect(rectangle.width).toBe(160);
+  });
+
+  it("keeps already-drawn shapes at their pixel sizes after calibration", () => {
+    let state = stateWithRectangle("first");
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "ellipse",
+      x: 300,
+      y: 0,
+      id: "second",
+    });
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "mm" });
+    state = editorReducer(state, { type: "select", id: "first" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 40,
+    });
+
+    expect(state.objects.find((object) => object.id === "first")).toMatchObject(
+      { width: 160, height: 96 },
+    );
+    expect(
+      state.objects.find((object) => object.id === "second"),
+    ).toMatchObject({ width: 120, height: 120 });
+  });
+
+  it("ignores non-positive calibration values", () => {
+    let state = stateWithRectangle();
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    const beforeZero = state;
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 0,
+    });
+    expect(state).toBe(beforeZero);
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: -4,
+    });
+    expect(state).toBe(beforeZero);
+    expect(state.document.measurement?.pixelsPerUnit).toBeNull();
+  });
+
+  it("locks the unit once the scale is calibrated", () => {
+    let state = stateWithRectangle();
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 5.25,
+    });
+    const calibrated = state;
+
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "mm" });
+    expect(state).toBe(calibrated);
+
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: null });
+    expect(state).toBe(calibrated);
+  });
+
+  it("clamps calibrated resizes to the minimum pixel size", () => {
+    let state = stateWithRectangle();
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 160,
+    });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "height",
+      value: 0.5,
+    });
+
+    expect(state.objects[0]).toMatchObject({ height: 8 });
+  });
+});
+
 describe("lineMetrics", () => {
   it("derives line length and angle from endpoints", () => {
     const line = createDiagramObject(

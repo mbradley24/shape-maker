@@ -21,6 +21,15 @@ export type DiagramStyle = {
 
 export type ShapeDimension = "width" | "height";
 
+export const LENGTH_UNITS = ["in", "mm", "cm", "m", "ft"] as const;
+
+export type LengthUnit = (typeof LENGTH_UNITS)[number];
+
+export type DiagramMeasurement = {
+  unit: LengthUnit;
+  pixelsPerUnit: number | null;
+};
+
 export type BaseObject = {
   id: string;
   type: ShapeType;
@@ -50,6 +59,7 @@ export type DiagramDocument = {
   width: number;
   height: number;
   title: string;
+  measurement?: DiagramMeasurement;
 };
 
 export type DiagramProject = {
@@ -194,6 +204,53 @@ export function normalizeLayers(objects: DiagramObject[]): DiagramObject[] {
 export function selectedObject(state: EditorState): DiagramObject | null {
   return state.objects.find((object) => object.id === state.selectedId) ?? null;
 }
+
+export function isLengthUnit(value: unknown): value is LengthUnit {
+  return (
+    typeof value === "string" &&
+    (LENGTH_UNITS as readonly string[]).includes(value)
+  );
+}
+
+export function isCalibratedMeasurement(
+  measurement: DiagramMeasurement | null | undefined,
+): measurement is DiagramMeasurement & { pixelsPerUnit: number } {
+  return Boolean(
+    measurement &&
+    typeof measurement.pixelsPerUnit === "number" &&
+    Number.isFinite(measurement.pixelsPerUnit) &&
+    measurement.pixelsPerUnit > 0,
+  );
+}
+
+export function pixelsToDimensionValue(
+  pixels: number,
+  measurement?: DiagramMeasurement | null,
+): number {
+  if (!isCalibratedMeasurement(measurement)) {
+    return Math.round(pixels);
+  }
+  return Math.round((pixels / measurement.pixelsPerUnit) * 100) / 100;
+}
+
+export function formatDimensionValue(
+  pixels: number,
+  measurement?: DiagramMeasurement | null,
+): string {
+  const value = pixelsToDimensionValue(pixels, measurement);
+  return isCalibratedMeasurement(measurement)
+    ? `${value} ${measurement.unit}`
+    : `${value}`;
+}
+
+// Shared by the on-canvas indicator (top-left anchored) and the SVG export
+// (baseline anchored), so the two renderings stay visually in sync.
+export const UNIT_INDICATOR_LAYOUT = {
+  margin: 12,
+  baselineY: 24,
+  fontSize: 13,
+  color: "#1e293b",
+} as const;
 
 export function lineMetrics(object: LineObject): {
   dx: number;

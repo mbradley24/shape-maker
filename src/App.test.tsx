@@ -197,5 +197,36 @@ describe("App MVP polish", () => {
         expect.stringContaining("<svg"),
       ),
     );
+    expect(fileMocks.saveTextFile).not.toHaveBeenCalledWith(
+      "shape-maker-svg",
+      "diagram.svg",
+      expect.stringContaining("Units:"),
+    );
+  });
+
+  it("offers the required length units and shows the selected unit indicator", async () => {
+    render(<App />);
+
+    const select = screen.getByLabelText("Diagram length unit");
+    const options = Array.from(select.querySelectorAll("option")).map(
+      (option) => option.value,
+    );
+    expect(options).toEqual(["", "in", "mm", "cm", "m", "ft"]);
+    expect(screen.queryByTitle("Diagram length unit")).not.toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: "in" } });
+
+    expect(select).toHaveValue("in");
+    expect(screen.getByTitle("Diagram length unit")).toHaveTextContent("in");
+
+    fireEvent.keyDown(window, { key: "e", metaKey: true, shiftKey: true });
+
+    await waitFor(() =>
+      expect(fileMocks.saveTextFile).toHaveBeenCalledWith(
+        "shape-maker-svg",
+        "diagram.svg",
+        expect.stringContaining("Units: in"),
+      ),
+    );
   });
 });

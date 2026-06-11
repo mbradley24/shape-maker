@@ -1,20 +1,29 @@
 import { ArrowDown, ArrowUp, Copy, Ruler, Trash2 } from "lucide-react";
-import type { Dispatch } from "react";
+import { useEffect, useRef, useState, type Dispatch } from "react";
 import { EditorAction } from "../model/editorReducer";
 import {
+  DiagramMeasurement,
   DiagramObject,
   DiagramStyle,
+  isCalibratedMeasurement,
   lineMetrics,
+  pixelsToDimensionValue,
   ShapeDimension,
 } from "../model/diagram";
 
 type Props = {
   selected: DiagramObject | null;
   copiedStyle: DiagramStyle | null;
+  measurement?: DiagramMeasurement;
   dispatch: Dispatch<EditorAction>;
 };
 
-export function Inspector({ selected, copiedStyle, dispatch }: Props) {
+export function Inspector({
+  selected,
+  copiedStyle,
+  measurement,
+  dispatch,
+}: Props) {
   if (!selected) {
     return (
       <aside className="inspector">
@@ -110,7 +119,7 @@ export function Inspector({ selected, copiedStyle, dispatch }: Props) {
       {isDimensionable(selected) ? (
         <>
           <h3>Dimensions</h3>
-          <p className="muted compact">Canvas units are pixels.</p>
+          <p className="muted compact">{measurementHint(measurement)}</p>
           <div className="dimension-toggle-grid">
             {(["width", "height"] as const).map((dimension) => {
               const visible = selected.dimensions?.includes(dimension) ?? false;
@@ -137,11 +146,15 @@ export function Inspector({ selected, copiedStyle, dispatch }: Props) {
           {selected.dimensions?.length ? (
             <div className="field-grid dimension-fields">
               {selected.dimensions.map((dimension) => (
-                <NumberField
+                <DimensionNumberField
                   key={dimension}
-                  label={dimensionFieldLabel(selected, dimension)}
-                  value={selected[dimension]}
-                  min={8}
+                  label={dimensionFieldLabel(selected, dimension, measurement)}
+                  value={pixelsToDimensionValue(
+                    selected[dimension],
+                    measurement,
+                  )}
+                  min={measurement ? undefined : 8}
+                  step={measurement ? 0.01 : 1}
                   onCommit={(value) =>
                     dispatch({
                       type: "updateSelectedDimension",
@@ -250,14 +263,33 @@ function dimensionButtonLabel(
 function dimensionFieldLabel(
   object: DimensionableObject,
   dimension: ShapeDimension,
+  measurement?: DiagramMeasurement,
 ) {
-  if (object.type === "ellipse") {
-    return dimension === "width" ? "Diameter W" : "Diameter H";
+  const base =
+    object.type === "ellipse"
+      ? dimension === "width"
+        ? "Diameter W"
+        : "Diameter H"
+      : object.type === "triangle"
+        ? dimension === "width"
+          ? "Leg W"
+          : "Leg H"
+        : dimension === "width"
+          ? "Side W"
+          : "Side H";
+  return isCalibratedMeasurement(measurement)
+    ? `${base} (${measurement.unit})`
+    : base;
+}
+
+function measurementHint(measurement?: DiagramMeasurement) {
+  if (!measurement) {
+    return "Canvas units are pixels.";
   }
-  if (object.type === "triangle") {
-    return dimension === "width" ? "Leg W" : "Leg H";
+  if (!isCalibratedMeasurement(measurement)) {
+    return `Enter the first dimension value to calibrate the ${measurement.unit} scale.`;
   }
-  return dimension === "width" ? "Side W" : "Side H";
+  return `Dimensions are shown in ${measurement.unit}.`;
 }
 
 function NumberField({
@@ -287,6 +319,63 @@ function NumberField({
         onChange={(event) => {
           const next = event.target.valueAsNumber;
           if (Number.isFinite(next)) onCommit(next);
+        }}
+      />
+    </label>
+  );
+}
+
+// Dimension edits can calibrate the global unit scale, an irreversible
+// one-shot operation, so unlike NumberField this buffers keystrokes locally
+// and commits only on blur/Enter (matching the canvas DimensionValueEditor).
+// Calibration therefore only ever sees the final entered value.
+function DimensionNumberField({
+  label,
+  value,
+  onCommit,
+  min,
+  step,
+}: {
+  label: string;
+  value: number;
+  onCommit: (value: number) => void;
+  min?: number;
+  step?: number;
+}) {
+  const displayValue = Number.isFinite(value) ? value : 0;
+  const [draft, setDraft] = useState(() => String(displayValue));
+  const lastCommitted = useRef(displayValue);
+
+  useEffect(() => {
+    setDraft(String(displayValue));
+    lastCommitted.current = displayValue;
+  }, [displayValue]);
+
+  function commit() {
+    const next = draft.trim() === "" ? Number.NaN : Number(draft);
+    if (!Number.isFinite(next) || next === lastCommitted.current) return;
+    lastCommitted.current = next;
+    onCommit(next);
+  }
+
+  return (
+    <label className="field">
+      {label}
+      <input
+        type="number"
+        value={draft}
+        min={min}
+        step={step}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setDraft(String(lastCommitted.current));
+          }
         }}
       />
     </label>

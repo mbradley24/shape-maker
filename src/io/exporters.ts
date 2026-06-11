@@ -1,14 +1,17 @@
 import {
+  DiagramMeasurement,
   DiagramObject,
   LineObject,
   rightTrianglePoints,
   sortByLayer,
+  UNIT_INDICATOR_LAYOUT,
 } from "../model/diagram";
 
 export function exportDiagramSvg(
   objects: DiagramObject[],
   width: number,
   height: number,
+  measurement?: DiagramMeasurement | null,
 ): string {
   const orderedObjects = sortByLayer(objects);
   const arrowMarkerIds = new Map<string, string>();
@@ -27,14 +30,20 @@ export function exportDiagramSvg(
   const body = orderedObjects
     .map((object) => objectToSvg(object, arrowMarkerIds.get(object.id)))
     .join("\n  ");
+  const unitIndicator = measurement
+    ? `  <text x="${UNIT_INDICATOR_LAYOUT.margin}" y="${UNIT_INDICATOR_LAYOUT.baselineY}" font-size="${UNIT_INDICATOR_LAYOUT.fontSize}" fill="${UNIT_INDICATOR_LAYOUT.color}">Units: ${escapeXml(measurement.unit)}</text>`
+    : null;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
     "  <defs>",
     arrowMarkers,
     "  </defs>",
     body,
+    unitIndicator,
     "</svg>",
-  ].join("\n");
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
 function objectToSvg(object: DiagramObject, arrowMarkerId?: string): string {
