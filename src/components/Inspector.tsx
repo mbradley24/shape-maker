@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Copy, Ruler, Trash2 } from "lucide-react";
-import type { Dispatch } from "react";
+import { useEffect, useRef, useState, type Dispatch } from "react";
 import { EditorAction } from "../model/editorReducer";
 import {
   DiagramMeasurement,
@@ -146,15 +146,15 @@ export function Inspector({
           {selected.dimensions?.length ? (
             <div className="field-grid dimension-fields">
               {selected.dimensions.map((dimension) => (
-                <NumberField
+                <DimensionNumberField
                   key={dimension}
                   label={dimensionFieldLabel(selected, dimension, measurement)}
                   value={pixelsToDimensionValue(
                     selected[dimension],
                     measurement,
                   )}
-                  min={isCalibratedMeasurement(measurement) ? undefined : 8}
-                  step={isCalibratedMeasurement(measurement) ? 0.01 : 1}
+                  min={measurement ? undefined : 8}
+                  step={measurement ? 0.01 : 1}
                   onCommit={(value) =>
                     dispatch({
                       type: "updateSelectedDimension",
@@ -319,6 +319,63 @@ function NumberField({
         onChange={(event) => {
           const next = event.target.valueAsNumber;
           if (Number.isFinite(next)) onCommit(next);
+        }}
+      />
+    </label>
+  );
+}
+
+// Dimension edits can calibrate the global unit scale, an irreversible
+// one-shot operation, so unlike NumberField this buffers keystrokes locally
+// and commits only on blur/Enter (matching the canvas DimensionValueEditor).
+// Calibration therefore only ever sees the final entered value.
+function DimensionNumberField({
+  label,
+  value,
+  onCommit,
+  min,
+  step,
+}: {
+  label: string;
+  value: number;
+  onCommit: (value: number) => void;
+  min?: number;
+  step?: number;
+}) {
+  const displayValue = Number.isFinite(value) ? value : 0;
+  const [draft, setDraft] = useState(() => String(displayValue));
+  const lastCommitted = useRef(displayValue);
+
+  useEffect(() => {
+    setDraft(String(displayValue));
+    lastCommitted.current = displayValue;
+  }, [displayValue]);
+
+  function commit() {
+    const next = draft.trim() === "" ? Number.NaN : Number(draft);
+    if (!Number.isFinite(next) || next === lastCommitted.current) return;
+    lastCommitted.current = next;
+    onCommit(next);
+  }
+
+  return (
+    <label className="field">
+      {label}
+      <input
+        type="number"
+        value={draft}
+        min={min}
+        step={step}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setDraft(String(lastCommitted.current));
+          }
         }}
       />
     </label>
