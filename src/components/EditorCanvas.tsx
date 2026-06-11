@@ -745,11 +745,7 @@ type TriangleCornerHandlesProps = {
   dispatch: Dispatch<EditorAction>;
 };
 
-const TRIANGLE_CORNERS: Array<{ corner: TriangleCorner; label: string }> = [
-  { corner: "right", label: "Right" },
-  { corner: "horizontal", label: "Width" },
-  { corner: "vertical", label: "Height" },
-];
+const TRIANGLE_CORNERS: TriangleCorner[] = ["right", "horizontal", "vertical"];
 
 export function TriangleCornerHandles({
   object,
@@ -757,66 +753,56 @@ export function TriangleCornerHandles({
 }: TriangleCornerHandlesProps) {
   return (
     <>
-      {TRIANGLE_CORNERS.map(({ corner, label }) => {
+      {TRIANGLE_CORNERS.map((corner) => {
         const { x, y } = triangleCornerHandlePosition(object, corner);
         return (
-          <Fragment key={`${object.id}-${corner}-corner`}>
-            <Circle
-              name={`triangle-${corner}-corner-handle`}
-              x={x}
-              y={y}
-              radius={TRIANGLE_CORNER_HANDLE_RADIUS}
-              fill="#ffffff"
-              stroke="#2563eb"
-              strokeWidth={TRIANGLE_CORNER_HANDLE_STROKE_WIDTH}
-              draggable
-              onPointerDown={(event) => {
-                event.cancelBubble = true;
-              }}
-              onClick={(event) => {
-                event.cancelBubble = true;
-              }}
-              onDragMove={(event) => {
-                const patch = triangleCornerDragPatch(
-                  object,
-                  corner,
-                  event.target.x(),
-                  event.target.y(),
-                );
-                event.target.position(
-                  triangleCornerHandlePosition({ ...object, ...patch }, corner),
-                );
-                dispatch({
-                  type: "updateSelected",
-                  patch,
-                });
-              }}
-              onDragEnd={(event) => {
-                const patch = triangleCornerDragPatch(
-                  object,
-                  corner,
-                  event.target.x(),
-                  event.target.y(),
-                );
-                event.target.position(
-                  triangleCornerHandlePosition({ ...object, ...patch }, corner),
-                );
-                dispatch({
-                  type: "updateSelected",
-                  patch,
-                });
-              }}
-            />
-            <Text
-              name={`triangle-${corner}-corner-label`}
-              x={x + 10}
-              y={y - 22}
-              text={label}
-              fontSize={12}
-              fill="#4c1d95"
-              listening={false}
-            />
-          </Fragment>
+          <Circle
+            key={`${object.id}-${corner}-corner`}
+            name={`triangle-${corner}-corner-handle`}
+            x={x}
+            y={y}
+            radius={TRIANGLE_CORNER_HANDLE_RADIUS}
+            fill="#ffffff"
+            stroke="#2563eb"
+            strokeWidth={TRIANGLE_CORNER_HANDLE_STROKE_WIDTH}
+            draggable
+            onPointerDown={(event) => {
+              event.cancelBubble = true;
+            }}
+            onClick={(event) => {
+              event.cancelBubble = true;
+            }}
+            onDragMove={(event) => {
+              const patch = triangleCornerDragPatch(
+                object,
+                corner,
+                event.target.x(),
+                event.target.y(),
+              );
+              event.target.position(
+                triangleCornerHandlePosition({ ...object, ...patch }, corner),
+              );
+              dispatch({
+                type: "updateSelected",
+                patch,
+              });
+            }}
+            onDragEnd={(event) => {
+              const patch = triangleCornerDragPatch(
+                object,
+                corner,
+                event.target.x(),
+                event.target.y(),
+              );
+              event.target.position(
+                triangleCornerHandlePosition({ ...object, ...patch }, corner),
+              );
+              dispatch({
+                type: "updateSelected",
+                patch,
+              });
+            }}
+          />
         );
       })}
     </>
