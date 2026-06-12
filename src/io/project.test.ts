@@ -135,6 +135,96 @@ describe("project serialization", () => {
     });
   });
 
+  it("round trips the force unit and scale independently of the length scale", () => {
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+    const document = {
+      ...defaultDocument,
+      measurement: { unit: "in" as const, pixelsPerUnit: 160 / 5.25 },
+      forceMeasurement: { unit: "N" as const, pixelsPerUnit: 1.8 },
+    };
+
+    const parsed = parseProject(serializeProject([arrow], document));
+
+    expect(parsed.document.measurement).toEqual({
+      unit: "in",
+      pixelsPerUnit: 160 / 5.25,
+    });
+    expect(parsed.document.forceMeasurement).toEqual({
+      unit: "N",
+      pixelsPerUnit: 1.8,
+    });
+    expect(parsed.objects[0]).toMatchObject({ points: [0, 0, 180, 0] });
+  });
+
+  it("round trips a force unit without any length unit", () => {
+    const document = {
+      ...defaultDocument,
+      forceMeasurement: { unit: "lbf" as const, pixelsPerUnit: null },
+    };
+
+    const parsed = parseProject(serializeProject([], document));
+
+    expect(parsed.document.forceMeasurement).toEqual({
+      unit: "lbf",
+      pixelsPerUnit: null,
+    });
+    expect(parsed.document.measurement).toBeUndefined();
+  });
+
+  it("opens legacy projects without force metadata", () => {
+    const parsed = parseProject(serializeProject([], defaultDocument));
+
+    expect(parsed.document.forceMeasurement).toBeUndefined();
+    expect(parsed.document).not.toHaveProperty("forceMeasurement");
+  });
+
+  it("drops malformed force measurement metadata instead of failing", () => {
+    const unknownUnit = JSON.stringify({
+      version: 1,
+      document: {
+        ...defaultDocument,
+        forceMeasurement: { unit: "stone", pixelsPerUnit: 12 },
+      },
+      objects: [],
+    });
+
+    expect(parseProject(unknownUnit).document.forceMeasurement).toBeUndefined();
+
+    const negativeScale = JSON.stringify({
+      version: 1,
+      document: {
+        ...defaultDocument,
+        forceMeasurement: { unit: "kN", pixelsPerUnit: -3 },
+      },
+      objects: [],
+    });
+
+    expect(parseProject(negativeScale).document.forceMeasurement).toEqual({
+      unit: "kN",
+      pixelsPerUnit: null,
+    });
+  });
+
+  it("never confuses length units with force units across the two scales", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      document: {
+        ...defaultDocument,
+        measurement: { unit: "N", pixelsPerUnit: 2 },
+        forceMeasurement: { unit: "mm", pixelsPerUnit: 2 },
+      },
+      objects: [],
+    });
+
+    const parsed = parseProject(raw);
+
+    expect(parsed.document.measurement).toBeUndefined();
+    expect(parsed.document.forceMeasurement).toBeUndefined();
+  });
+
   it("sanitizes persisted dimensions to supported measurement keys", () => {
     const raw = JSON.stringify({
       version: 1,

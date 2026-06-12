@@ -90,6 +90,28 @@ describe("exportDiagramSvg", () => {
     expect(svg).toContain(">Units: mm</text>");
   });
 
+  it("renders the force unit in the indicator without requiring a length unit", () => {
+    const svg = exportDiagramSvg([], 640, 480, null, {
+      unit: "N",
+      pixelsPerUnit: 1.8,
+    });
+
+    expect(svg).toContain(">Force: N</text>");
+    expect(svg).not.toContain("Units:");
+  });
+
+  it("renders both length and force units in a single indicator", () => {
+    const svg = exportDiagramSvg(
+      [],
+      640,
+      480,
+      { unit: "in", pixelsPerUnit: 160 / 5.25 },
+      { unit: "kN", pixelsPerUnit: null },
+    );
+
+    expect(svg).toContain(">Units: in | Force: kN</text>");
+  });
+
   it("omits the unit indicator when no unit is set", () => {
     const rectangle = createDiagramObject(
       { type: "rectangle", x: 10, y: 20, id: "rect" },
@@ -97,7 +119,8 @@ describe("exportDiagramSvg", () => {
     );
 
     expect(exportDiagramSvg([rectangle], 640, 480)).not.toContain("Units:");
-    expect(exportDiagramSvg([rectangle], 640, 480, null)).not.toContain(
+    expect(exportDiagramSvg([rectangle], 640, 480)).not.toContain("Force:");
+    expect(exportDiagramSvg([rectangle], 640, 480, null, null)).not.toContain(
       "Units:",
     );
   });

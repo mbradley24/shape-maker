@@ -5,9 +5,12 @@ import {
   DiagramObject,
   DiagramStyle,
   EditorState,
+  ForceUnit,
   initialEditorState,
   isCalibratedMeasurement,
   LengthUnit,
+  lineMetrics,
+  LineObject,
   normalizeLayers,
   ShapeDimension,
   ShapeType,
@@ -39,6 +42,8 @@ export type EditorAction =
       value: number;
     }
   | { type: "setMeasurementUnit"; unit: LengthUnit | null }
+  | { type: "setForceUnit"; unit: ForceUnit | null }
+  | { type: "updateSelectedMagnitude"; value: number }
   | { type: "updateText"; text: string }
   | { type: "copySelectedStyle" }
   | { type: "applyCopiedStyle"; id: string }
@@ -121,6 +126,24 @@ export function editorReducer(
         error: null,
       };
     }
+    case "setForceUnit": {
+      if (isCalibratedMeasurement(state.document.forceMeasurement)) {
+        return state;
+      }
+      return {
+        ...state,
+        document: {
+          ...state.document,
+          forceMeasurement: action.unit
+            ? { unit: action.unit, pixelsPerUnit: null }
+            : undefined,
+        },
+        dirty: true,
+        error: null,
+      };
+    }
+    case "updateSelectedMagnitude":
+      return applySelectedMagnitudeValue(state, action.value);
     case "updateText":
       if (!state.selectedId) return state;
       return updateObject(state, state.selectedId, (object) => {
@@ -261,6 +284,58 @@ function applySelectedDimensionValue(
   return updateObject(state, selected.id, (object) =>
     updateObjectDimension(object, dimension, pixels),
   );
+}
+
+// Arrows never store a magnitude: the displayed value is always derived from
+// the pixel length and the force scale, mirroring how shape dimensions derive
+// from pixels and the length scale. The first magnitude entry calibrates the
+// pixels-per-force-unit scale without touching geometry; later entries resize
+// the arrow along its own direction so the derived magnitude matches.
+function applySelectedMagnitudeValue(
+  state: EditorState,
+  value: number,
+): EditorState {
+  const selected = state.objects.find(
+    (object) => object.id === state.selectedId,
+  );
+  const forceMeasurement = state.document.forceMeasurement;
+  if (
+    !selected ||
+    selected.type !== "arrow" ||
+    !forceMeasurement ||
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    return state;
+  }
+
+  const { length } = lineMetrics(selected);
+  if (length <= 0) return state;
+
+  if (!isCalibratedMeasurement(forceMeasurement)) {
+    return {
+      ...state,
+      document: {
+        ...state.document,
+        forceMeasurement: {
+          ...forceMeasurement,
+          pixelsPerUnit: length / value,
+        },
+      },
+      dirty: true,
+      error: null,
+    };
+  }
+
+  const scale = (value * forceMeasurement.pixelsPerUnit) / length;
+  const [x1, y1, x2, y2] = selected.points;
+  const points: LineObject["points"] = [
+    x1,
+    y1,
+    x1 + (x2 - x1) * scale,
+    y1 + (y2 - y1) * scale,
+  ];
+  return updateObject(state, selected.id, (object) => ({ ...object, points }));
 }
 
 function supportsDimension(

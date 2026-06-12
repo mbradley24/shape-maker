@@ -1,9 +1,12 @@
 import {
   defaultDocument,
+  DiagramForceMeasurement,
   DiagramMeasurement,
   DiagramObject,
   DiagramProject,
+  isForceUnit,
   isLengthUnit,
+  MeasurementScale,
   PROJECT_VERSION,
   ShapeDimension,
   sortByLayer,
@@ -40,6 +43,9 @@ export function parseProject(raw: string): DiagramProject {
   }
 
   const measurement = parseMeasurement(value.document.measurement);
+  const forceMeasurement = parseForceMeasurement(
+    value.document.forceMeasurement,
+  );
   const document = {
     width: numberOr(value.document.width, defaultDocument.width),
     height: numberOr(value.document.height, defaultDocument.height),
@@ -48,6 +54,7 @@ export function parseProject(raw: string): DiagramProject {
         ? value.document.title
         : defaultDocument.title,
     ...(measurement ? { measurement } : {}),
+    ...(forceMeasurement ? { forceMeasurement } : {}),
   };
 
   const objects = value.objects.map(parseObject);
@@ -137,7 +144,20 @@ function stringOr(value: unknown, fallback: string): string {
 }
 
 function parseMeasurement(value: unknown): DiagramMeasurement | undefined {
-  if (!isObject(value) || !isLengthUnit(value.unit)) return undefined;
+  return parseMeasurementScale(value, isLengthUnit);
+}
+
+function parseForceMeasurement(
+  value: unknown,
+): DiagramForceMeasurement | undefined {
+  return parseMeasurementScale(value, isForceUnit);
+}
+
+function parseMeasurementScale<Unit extends string>(
+  value: unknown,
+  isUnit: (candidate: unknown) => candidate is Unit,
+): MeasurementScale<Unit> | undefined {
+  if (!isObject(value) || !isUnit(value.unit)) return undefined;
   const pixelsPerUnit =
     typeof value.pixelsPerUnit === "number" &&
     Number.isFinite(value.pixelsPerUnit) &&
