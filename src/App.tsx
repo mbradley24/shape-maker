@@ -10,6 +10,7 @@ import {
   Circle,
   MousePointer2,
   Paintbrush,
+  Ruler,
   Save,
   Square,
   Type,
@@ -235,10 +236,9 @@ export function App() {
             <select
               aria-label="Diagram length unit"
               value={state.document.measurement?.unit ?? ""}
-              disabled={isCalibratedMeasurement(state.document.measurement)}
               title={
                 isCalibratedMeasurement(state.document.measurement)
-                  ? "Unit is locked after the scale is calibrated"
+                  ? "Switch the display unit; shapes keep their on-screen size"
                   : "Set the diagram length unit"
               }
               onChange={(event) =>
@@ -250,7 +250,12 @@ export function App() {
                 })
               }
             >
-              <option value="">px</option>
+              <option
+                value=""
+                disabled={isCalibratedMeasurement(state.document.measurement)}
+              >
+                px
+              </option>
               {LENGTH_UNITS.map((unit) => (
                 <option key={unit} value={unit}>
                   {unit}
@@ -262,6 +267,15 @@ export function App() {
             <span className="unit-indicator" title="Diagram length unit">
               {state.document.measurement.unit}
             </span>
+          ) : null}
+          {isCalibratedMeasurement(state.document.measurement) ? (
+            <button
+              className="command"
+              onClick={() => dispatch({ type: "beginScaleRecalibration" })}
+              title="Recalibrate scale: enter the real value of any shape dimension to set a new scale"
+            >
+              <Ruler size={16} /> Recalibrate
+            </button>
           ) : null}
           <button
             className="command"

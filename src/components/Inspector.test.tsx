@@ -106,6 +106,32 @@ describe("Inspector dimensions", () => {
     });
   });
 
+  it("replaces the note and converts values after a switch to mm", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "rect" },
+      0,
+    );
+    if (rectangle.type !== "rectangle") throw new Error("expected rectangle");
+    rectangle.dimensions = ["width"];
+
+    // The scale a 160 px / 5.25 in calibration becomes after switching the
+    // display unit to mm: (160 / 5.25) / 25.4 px per mm.
+    render(
+      <Inspector
+        selected={rectangle}
+        copiedStyle={null}
+        measurement={{ unit: "mm", pixelsPerUnit: 160 / 5.25 / 25.4 }}
+        dispatch={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByText("Canvas units are pixels."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Dimensions are shown in mm.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Side W (mm)")).toHaveValue(133.35);
+  });
+
   it("buffers keystrokes and commits a dimension entry exactly once on Enter", () => {
     const rectangle = createDiagramObject(
       { type: "rectangle", x: 0, y: 0, id: "rect" },
