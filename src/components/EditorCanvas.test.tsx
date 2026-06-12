@@ -16,6 +16,8 @@ import {
   inlineTextEditCommitAction,
   inlineTextEditorStyle,
   isCanvasSurfaceTarget,
+  isDimensionableObject,
+  visibleObjectDimensions,
   lineEndpointDragPatch,
   lineEndpointHandlePosition,
   LineEndpointHandles,
@@ -1141,5 +1143,152 @@ describe("shape handle styling", () => {
       expect(handle.getAttribute("radius")).toBe("6");
       expect(handle.getAttribute("stroke-width")).toBe("2");
     }
+  });
+});
+
+describe("line length dimension helpers", () => {
+  function makeLine(points: LineObject["points"], x = 10, y = 20) {
+    const line = createDiagramObject({ type: "line", x, y, id: "line" }, 0);
+    if (line.type !== "line") throw new Error("expected line");
+    return { ...line, type: "line" as const, points };
+  }
+
+  it("treats plain lines as dimensionable but never arrows", () => {
+    const line = makeLine([0, 0, 180, 0]);
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+
+    expect(isDimensionableObject(line)).toBe(true);
+    expect(isDimensionableObject(arrow)).toBe(false);
+  });
+
+  it("shows the length dimension for a selected line without a toggle", () => {
+    const line = makeLine([0, 0, 180, 0]);
+
+    expect(visibleObjectDimensions(line, "line")).toEqual(["length"]);
+    expect(visibleObjectDimensions(line, null)).toEqual([]);
+    expect(visibleObjectDimensions(line, "other")).toEqual([]);
+  });
+
+  it("keeps a toggled length dimension visible when the line is deselected", () => {
+    const line = makeLine([0, 0, 180, 0]);
+    line.dimensions = ["length"];
+
+    expect(visibleObjectDimensions(line, null)).toEqual(["length"]);
+    expect(visibleObjectDimensions(line, "line")).toEqual(["length"]);
+  });
+
+  it("never reveals dimensions for a selected arrow", () => {
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+
+    expect(visibleObjectDimensions(arrow, "arrow")).toEqual([]);
+  });
+
+  it("does not add dimensions to boxes just because they are selected", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "rect" },
+      0,
+    );
+
+    expect(visibleObjectDimensions(rectangle, "rect")).toEqual([]);
+  });
+
+  it("renders a horizontal line dimension like a rectangle width dimension", () => {
+    const line = makeLine([0, 0, 180, 0], 10, 20);
+
+    const guide = dimensionGuide(line, "length");
+
+    expect(guide.text).toBe("180");
+    expect(guide.extensions[0].start.x).toBeCloseTo(10);
+    expect(guide.extensions[0].start.y).toBeCloseTo(16);
+    expect(guide.extensions[0].end.x).toBeCloseTo(10);
+    expect(guide.extensions[0].end.y).toBeCloseTo(-16);
+    expect(guide.extensions[1].start.x).toBeCloseTo(190);
+    expect(guide.extensions[1].start.y).toBeCloseTo(16);
+    expect(guide.arrows[0].end.x).toBeCloseTo(10);
+    expect(guide.arrows[0].end.y).toBeCloseTo(-8);
+    expect(guide.arrows[1].end.x).toBeCloseTo(190);
+    expect(guide.arrows[1].end.y).toBeCloseTo(-8);
+    expect(guide.arrows[0].start.x).toBeLessThan(guide.arrows[1].start.x);
+    expect(guide.label.rotation).toBeCloseTo(0);
+  });
+
+  it("keeps the dimension guide parallel to a diagonal line", () => {
+    const line = makeLine([0, 0, 80, 60], 100, 200);
+
+    const guide = dimensionGuide(line, "length");
+
+    // Unit vector (0.8, 0.6); offset normal is (0.6, -0.8).
+    expect(guide.text).toBe("100");
+    expect(guide.extensions[0].start.x).toBeCloseTo(100 + 0.6 * 4);
+    expect(guide.extensions[0].start.y).toBeCloseTo(200 - 0.8 * 4);
+    expect(guide.extensions[0].end.x).toBeCloseTo(100 + 0.6 * 36);
+    expect(guide.extensions[0].end.y).toBeCloseTo(200 - 0.8 * 36);
+    expect(guide.arrows[0].end.x).toBeCloseTo(100 + 0.6 * 28);
+    expect(guide.arrows[0].end.y).toBeCloseTo(200 - 0.8 * 28);
+    expect(guide.arrows[1].end.x).toBeCloseTo(180 + 0.6 * 28);
+    expect(guide.arrows[1].end.y).toBeCloseTo(260 - 0.8 * 28);
+    expect(guide.label.rotation).toBeCloseTo(36.87, 1);
+  });
+
+  it("adds the object rotation to the dimension label angle", () => {
+    const line = makeLine([0, 0, 80, 60], 100, 200);
+    line.rotation = 15;
+
+    const guide = dimensionGuide(line, "length");
+
+    expect(guide.label.rotation).toBeCloseTo(51.87, 1);
+  });
+
+  it("labels line lengths with the calibrated unit and edits in unit values", () => {
+    const line = makeLine([0, 0, 180, 0]);
+    const measurement = { unit: "in", pixelsPerUnit: 180 / 5.25 } as const;
+
+    expect(dimensionLabel(line, "length", measurement)).toBe("5.25 in");
+    expect(dimensionGuide(line, "length", measurement).text).toBe("5.25 in");
+    expect(dimensionEditValue(line, "length", measurement)).toBe("5.25");
+  });
+
+  it("falls back to rounded pixel lengths while no scale is calibrated", () => {
+    const line = makeLine([0, 0, 80, 60]);
+
+    expect(dimensionLabel(line, "length")).toBe("100");
+    expect(dimensionEditValue(line, "length")).toBe("100");
+    expect(
+      dimensionLabel(line, "length", { unit: "in", pixelsPerUnit: null }),
+    ).toBe("100");
+    expect(
+      dimensionEditValue(line, "length", { unit: "in", pixelsPerUnit: null }),
+    ).toBe("100");
+  });
+
+  it("commits double-click length edits for the selected line only", () => {
+    const line = makeLine([0, 0, 180, 0]);
+
+    expect(dimensionEditCommitAction(line, "line", "length", "240")).toEqual({
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 240,
+    });
+    expect(dimensionEditCommitAction(line, "other", "length", "240")).toBe(
+      null,
+    );
+    expect(dimensionEditCommitAction(line, "line", "length", "abc")).toBe(null);
+  });
+
+  it("never commits length edits for arrows", () => {
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+
+    expect(dimensionEditCommitAction(arrow, "arrow", "length", "240")).toBe(
+      null,
+    );
   });
 });

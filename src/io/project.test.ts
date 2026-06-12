@@ -159,4 +159,21 @@ describe("project serialization", () => {
       dimensions: ["width", "height"],
     });
   });
+
+  it("round trips a line's persisted length dimension", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 5, y: 6, id: "line" },
+      0,
+    );
+    if (line.type !== "line") throw new Error("expected line");
+    line.dimensions = ["length"];
+
+    const parsed = parseProject(serializeProject([line], defaultDocument));
+
+    expect(parsed.objects[0]).toMatchObject({
+      type: "line",
+      points: [0, 0, 180, 0],
+      dimensions: ["length"],
+    });
+  });
 });

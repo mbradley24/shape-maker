@@ -29,7 +29,9 @@ import {
   DiagramObject,
   EditorState,
   formatDimensionValue,
+  lineMetrics,
   LineObject,
+  objectDimensionPixels,
   pixelsToDimensionValue,
   rightTrianglePoints,
   selectedObject,
@@ -204,6 +206,7 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                 />
                 <DimensionOverlay
                   object={object}
+                  selectedId={state.selectedId}
                   measurement={state.document.measurement}
                   dispatch={dispatch}
                   onEditDimension={(dimension) => {
@@ -412,6 +415,7 @@ function DrawableObject({
 
 type DimensionOverlayProps = {
   object: DiagramObject;
+  selectedId: string | null;
   measurement?: DiagramMeasurement;
   dispatch: Dispatch<EditorAction>;
   onEditDimension: (dimension: ShapeDimension) => void;
@@ -419,17 +423,18 @@ type DimensionOverlayProps = {
 
 function DimensionOverlay({
   object,
+  selectedId,
   measurement,
   dispatch,
   onEditDimension,
 }: DimensionOverlayProps) {
-  if (!isDimensionableObject(object) || !object.dimensions?.length) {
-    return null;
-  }
+  if (!isDimensionableObject(object)) return null;
+  const dimensions = visibleObjectDimensions(object, selectedId);
+  if (!dimensions.length) return null;
 
   return (
     <>
-      {object.dimensions.map((dimension) => {
+      {dimensions.map((dimension) => {
         const guide = dimensionGuide(object, dimension, measurement);
         return (
           <Fragment key={`${object.id}-${dimension}-dimension`}>
@@ -1132,9 +1137,9 @@ function triangleCornerLocalPosition(
   }
 }
 
-export type DimensionableObject = BoxObject & {
-  type: "rectangle" | "ellipse" | "triangle";
-};
+export type DimensionableObject =
+  | (BoxObject & { type: "rectangle" | "ellipse" | "triangle" })
+  | (LineObject & { type: "line" });
 
 export function isDimensionableObject(
   object: DiagramObject,
@@ -1142,8 +1147,28 @@ export function isDimensionableObject(
   return (
     object.type === "rectangle" ||
     object.type === "ellipse" ||
-    object.type === "triangle"
+    object.type === "triangle" ||
+    object.type === "line"
   );
+}
+
+// Dimensions to render for an object. Plain lines additionally show their
+// length while selected, even before the persistent toggle is enabled, so
+// selecting a line always reveals its dimension. Arrows never qualify.
+export function visibleObjectDimensions(
+  object: DiagramObject,
+  selectedId: string | null,
+): ShapeDimension[] {
+  if (!isDimensionableObject(object)) return [];
+  const dimensions = object.dimensions ?? [];
+  if (
+    object.type === "line" &&
+    object.id === selectedId &&
+    !dimensions.includes("length")
+  ) {
+    return [...dimensions, "length"];
+  }
+  return dimensions;
 }
 
 export function dimensionLabel(
@@ -1152,7 +1177,7 @@ export function dimensionLabel(
   measurement?: DiagramMeasurement | null,
 ) {
   const text = formatDimensionValue(
-    dimension === "width" ? object.width : object.height,
+    objectDimensionPixels(object, dimension) ?? 0,
     measurement,
   );
   return object.type === "ellipse" ? `⌀${text}` : text;
@@ -1165,7 +1190,7 @@ export function dimensionEditValue(
 ): string {
   return String(
     pixelsToDimensionValue(
-      dimension === "width" ? object.width : object.height,
+      objectDimensionPixels(object, dimension) ?? 0,
       measurement,
     ),
   );
@@ -1210,6 +1235,10 @@ export function dimensionGuide(
   const text = dimensionLabel(object, dimension, measurement);
   const textWidth = text.length * DIMENSION_FONT_SIZE * 0.62;
   const halfGap = textWidth / 2 + DIMENSION_TEXT_GAP_PADDING;
+
+  if (object.type === "line") {
+    return lineLengthDimensionGuide(object, text, textWidth, halfGap);
+  }
 
   if (dimension === "width") {
     const lineY = -DIMENSION_OFFSET;
@@ -1266,6 +1295,59 @@ export function dimensionGuide(
       x: lineX - DIMENSION_TEXT_GAP_PADDING - textWidth,
       y: mid - DIMENSION_FONT_SIZE / 2,
     },
+  });
+}
+
+// SolidWorks-style length dimension for a plain line: extension lines at both
+// endpoints perpendicular to the line, a dimension line offset parallel to
+// it, and the value label rotated to read along the line.
+function lineLengthDimensionGuide(
+  object: LineObject & { type: "line" },
+  text: string,
+  textWidth: number,
+  halfGap: number,
+): DimensionGuide {
+  const [x1, y1, x2, y2] = object.points;
+  const { length, angle } = lineMetrics(object);
+  const ux = length > 0 ? (x2 - x1) / length : 1;
+  const uy = length > 0 ? (y2 - y1) / length : 0;
+  // Normal on the label side of the line (above a left-to-right line).
+  const nx = uy;
+  const ny = -ux;
+  const at = (along: number, offset: number) => ({
+    x: x1 + ux * along + nx * offset,
+    y: y1 + uy * along + ny * offset,
+  });
+  const mid = length / 2;
+  const textFitsInline = mid - halfGap >= DIMENSION_MIN_ARROW_SEGMENT;
+
+  return globalDimensionGuide(object, text, object.rotation + angle, {
+    extensions: [
+      {
+        start: at(0, DIMENSION_EXTENSION_GAP),
+        end: at(0, DIMENSION_OFFSET + DIMENSION_EXTENSION_OVERSHOOT),
+      },
+      {
+        start: at(length, DIMENSION_EXTENSION_GAP),
+        end: at(length, DIMENSION_OFFSET + DIMENSION_EXTENSION_OVERSHOOT),
+      },
+    ],
+    arrows: [
+      {
+        start: at(textFitsInline ? mid - halfGap : mid, DIMENSION_OFFSET),
+        end: at(0, DIMENSION_OFFSET),
+      },
+      {
+        start: at(textFitsInline ? mid + halfGap : mid, DIMENSION_OFFSET),
+        end: at(length, DIMENSION_OFFSET),
+      },
+    ],
+    label: at(
+      mid - textWidth / 2,
+      textFitsInline
+        ? DIMENSION_OFFSET + DIMENSION_FONT_SIZE / 2
+        : DIMENSION_OFFSET + DIMENSION_FONT_SIZE + 6,
+    ),
   });
 }
 

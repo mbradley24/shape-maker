@@ -19,7 +19,7 @@ export type DiagramStyle = {
   fontSize?: number;
 };
 
-export type ShapeDimension = "width" | "height";
+export type ShapeDimension = "width" | "height" | "length";
 
 export const LENGTH_UNITS = ["in", "mm", "cm", "m", "ft"] as const;
 
@@ -267,6 +267,40 @@ export function lineMetrics(object: LineObject): {
     length: Math.hypot(dx, dy),
     angle: Math.atan2(dy, dx) * (180 / Math.PI),
   };
+}
+
+// Current pixel size of an object's dimensionable measurement, or null when
+// the object does not support that dimension (e.g. arrows never have one).
+export function objectDimensionPixels(
+  object: DiagramObject,
+  dimension: ShapeDimension,
+): number | null {
+  if (object.type === "line") {
+    return dimension === "length" ? lineMetrics(object).length : null;
+  }
+  if (
+    (object.type === "rectangle" ||
+      object.type === "ellipse" ||
+      object.type === "triangle") &&
+    (dimension === "width" || dimension === "height")
+  ) {
+    return object[dimension];
+  }
+  return null;
+}
+
+// Resizes a line to the given pixel length while keeping its start point and
+// direction (angle) fixed; only the end point moves. A degenerate zero-length
+// line extends along its local +X axis.
+export function lineResizedToLength(
+  object: LineObject,
+  length: number,
+): LineObject["points"] {
+  const [x1, y1] = object.points;
+  const metrics = lineMetrics(object);
+  const ux = metrics.length > 0 ? metrics.dx / metrics.length : 1;
+  const uy = metrics.length > 0 ? metrics.dy / metrics.length : 0;
+  return [x1, y1, x1 + ux * length, y1 + uy * length];
 }
 
 export function rightTrianglePoints(object: {
