@@ -71,6 +71,7 @@ export function App() {
     [state.objects, state.selectedId],
   );
   const isLoading = loadingMessage !== null;
+  const isCalibrated = isCalibratedMeasurement(state.document.measurement);
 
   const runFileTask = useCallback(
     async (
@@ -237,7 +238,7 @@ export function App() {
               aria-label="Diagram length unit"
               value={state.document.measurement?.unit ?? ""}
               title={
-                isCalibratedMeasurement(state.document.measurement)
+                isCalibrated
                   ? "Switch the display unit; shapes keep their on-screen size"
                   : "Set the diagram length unit"
               }
@@ -250,10 +251,7 @@ export function App() {
                 })
               }
             >
-              <option
-                value=""
-                disabled={isCalibratedMeasurement(state.document.measurement)}
-              >
+              <option value="" disabled={isCalibrated}>
                 px
               </option>
               {LENGTH_UNITS.map((unit) => (
@@ -268,7 +266,7 @@ export function App() {
               {state.document.measurement.unit}
             </span>
           ) : null}
-          {isCalibratedMeasurement(state.document.measurement) ? (
+          {isCalibrated ? (
             <button
               className="command"
               onClick={() => dispatch({ type: "beginScaleRecalibration" })}

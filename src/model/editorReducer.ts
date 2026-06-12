@@ -111,36 +111,28 @@ export function editorReducer(
       return applySelectedDimensionValue(state, action.dimension, action.value);
     case "setMeasurementUnit": {
       const measurement = state.document.measurement;
+      let next: DiagramDocument["measurement"];
       if (isCalibratedMeasurement(measurement)) {
         // Once calibrated, the scale must not be silently discarded, so a
         // switch back to raw pixels (null) is ignored. Switching between real
         // units only converts the stored scale; geometry is untouched.
         if (!action.unit || action.unit === measurement.unit) return state;
-        return {
-          ...state,
-          document: {
-            ...state.document,
-            measurement: {
-              unit: action.unit,
-              pixelsPerUnit: convertPixelsPerUnit(
-                measurement.pixelsPerUnit,
-                measurement.unit,
-                action.unit,
-              ),
-            },
-          },
-          dirty: true,
-          error: null,
+        next = {
+          unit: action.unit,
+          pixelsPerUnit: convertPixelsPerUnit(
+            measurement.pixelsPerUnit,
+            measurement.unit,
+            action.unit,
+          ),
         };
+      } else {
+        next = action.unit
+          ? { unit: action.unit, pixelsPerUnit: null }
+          : undefined;
       }
       return {
         ...state,
-        document: {
-          ...state.document,
-          measurement: action.unit
-            ? { unit: action.unit, pixelsPerUnit: null }
-            : undefined,
-        },
+        document: { ...state.document, measurement: next },
         dirty: true,
         error: null,
       };
