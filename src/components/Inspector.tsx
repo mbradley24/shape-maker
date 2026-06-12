@@ -5,7 +5,9 @@ import {
   DiagramMeasurement,
   DiagramObject,
   DiagramStyle,
+  DimensionableObject,
   isCalibratedMeasurement,
+  isDimensionableObject,
   lineMetrics,
   objectDimensionPixels,
   pixelsToDimensionValue,
@@ -117,7 +119,7 @@ export function Inspector({
         </label>
       ) : null}
 
-      {isDimensionable(selected) ? (
+      {isDimensionableObject(selected) ? (
         <>
           <h3>Dimensions</h3>
           <p className="muted compact">{measurementHint(measurement)}</p>
@@ -234,23 +236,6 @@ export function Inspector({
   );
 }
 
-type DimensionableObject =
-  | (DiagramObject & {
-      type: "rectangle" | "ellipse" | "triangle";
-      width: number;
-      height: number;
-    })
-  | (DiagramObject & { type: "line" });
-
-function isDimensionable(object: DiagramObject): object is DimensionableObject {
-  return (
-    object.type === "rectangle" ||
-    object.type === "ellipse" ||
-    object.type === "triangle" ||
-    object.type === "line"
-  );
-}
-
 function dimensionOptions(
   object: DimensionableObject,
 ): readonly ShapeDimension[] {
@@ -280,20 +265,16 @@ function dimensionFieldLabel(
   dimension: ShapeDimension,
   measurement?: DiagramMeasurement,
 ) {
+  const noun =
+    object.type === "ellipse"
+      ? "Diameter"
+      : object.type === "triangle"
+        ? "Leg"
+        : "Side";
   const base =
     object.type === "line"
       ? "Length"
-      : object.type === "ellipse"
-        ? dimension === "width"
-          ? "Diameter W"
-          : "Diameter H"
-        : object.type === "triangle"
-          ? dimension === "width"
-            ? "Leg W"
-            : "Leg H"
-          : dimension === "width"
-            ? "Side W"
-            : "Side H";
+      : `${noun} ${dimension === "width" ? "W" : "H"}`;
   return isCalibratedMeasurement(measurement)
     ? `${base} (${measurement.unit})`
     : base;

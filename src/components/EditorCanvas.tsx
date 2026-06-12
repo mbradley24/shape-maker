@@ -27,10 +27,13 @@ import {
   BoxObject,
   DiagramMeasurement,
   DiagramObject,
+  DimensionableObject,
   EditorState,
   formatDimensionValue,
+  isDimensionableObject,
   lineMetrics,
   LineObject,
+  lineUnitVector,
   objectDimensionPixels,
   pixelsToDimensionValue,
   rightTrianglePoints,
@@ -1137,21 +1140,6 @@ function triangleCornerLocalPosition(
   }
 }
 
-export type DimensionableObject =
-  | (BoxObject & { type: "rectangle" | "ellipse" | "triangle" })
-  | (LineObject & { type: "line" });
-
-export function isDimensionableObject(
-  object: DiagramObject,
-): object is DimensionableObject {
-  return (
-    object.type === "rectangle" ||
-    object.type === "ellipse" ||
-    object.type === "triangle" ||
-    object.type === "line"
-  );
-}
-
 // Dimensions to render for an object. Plain lines additionally show their
 // length while selected, even before the persistent toggle is enabled, so
 // selecting a line always reveals its dimension. Arrows never qualify.
@@ -1307,10 +1295,10 @@ function lineLengthDimensionGuide(
   textWidth: number,
   halfGap: number,
 ): DimensionGuide {
-  const [x1, y1, x2, y2] = object.points;
-  const { length, angle } = lineMetrics(object);
-  const ux = length > 0 ? (x2 - x1) / length : 1;
-  const uy = length > 0 ? (y2 - y1) / length : 0;
+  const [x1, y1] = object.points;
+  const metrics = lineMetrics(object);
+  const { length, angle } = metrics;
+  const { ux, uy } = lineUnitVector(metrics);
   // Normal on the label side of the line (above a left-to-right line).
   const nx = uy;
   const ny = -ux;

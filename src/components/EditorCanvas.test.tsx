@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import type Konva from "konva";
-import { createDiagramObject, rightTrianglePoints } from "../model/diagram";
+import {
+  createDiagramObject,
+  isDimensionableObject,
+  rightTrianglePoints,
+} from "../model/diagram";
 import type { BoxObject, DiagramObject, LineObject } from "../model/diagram";
 import type { TextObject } from "./EditorCanvas";
 import {
@@ -16,7 +20,6 @@ import {
   inlineTextEditCommitAction,
   inlineTextEditorStyle,
   isCanvasSurfaceTarget,
-  isDimensionableObject,
   visibleObjectDimensions,
   lineEndpointDragPatch,
   lineEndpointHandlePosition,

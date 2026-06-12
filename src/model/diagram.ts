@@ -269,6 +269,37 @@ export function lineMetrics(object: LineObject): {
   };
 }
 
+// Unit direction of a line from its metrics; a degenerate zero-length line
+// points along its local +X axis.
+export function lineUnitVector({
+  dx,
+  dy,
+  length,
+}: {
+  dx: number;
+  dy: number;
+  length: number;
+}): { ux: number; uy: number } {
+  return length > 0 ? { ux: dx / length, uy: dy / length } : { ux: 1, uy: 0 };
+}
+
+// Objects that can display dimensions: boxes show width/height, plain lines
+// show their length. Text boxes and arrows never qualify.
+export type DimensionableObject =
+  | (BoxObject & { type: "rectangle" | "ellipse" | "triangle" })
+  | (LineObject & { type: "line" });
+
+export function isDimensionableObject(
+  object: DiagramObject,
+): object is DimensionableObject {
+  return (
+    object.type === "rectangle" ||
+    object.type === "ellipse" ||
+    object.type === "triangle" ||
+    object.type === "line"
+  );
+}
+
 // Current pixel size of an object's dimensionable measurement, or null when
 // the object does not support that dimension (e.g. arrows never have one).
 export function objectDimensionPixels(
@@ -297,9 +328,7 @@ export function lineResizedToLength(
   length: number,
 ): LineObject["points"] {
   const [x1, y1] = object.points;
-  const metrics = lineMetrics(object);
-  const ux = metrics.length > 0 ? metrics.dx / metrics.length : 1;
-  const uy = metrics.length > 0 ? metrics.dy / metrics.length : 0;
+  const { ux, uy } = lineUnitVector(lineMetrics(object));
   return [x1, y1, x1 + ux * length, y1 + uy * length];
 }
 
