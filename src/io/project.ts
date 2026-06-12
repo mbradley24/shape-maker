@@ -1,7 +1,5 @@
 import {
   defaultDocument,
-  DiagramForceMeasurement,
-  DiagramMeasurement,
   DiagramObject,
   DiagramProject,
   isForceUnit,
@@ -42,9 +40,13 @@ export function parseProject(raw: string): DiagramProject {
     throw new Error("Project file is missing document data.");
   }
 
-  const measurement = parseMeasurement(value.document.measurement);
-  const forceMeasurement = parseForceMeasurement(
+  const measurement = parseMeasurementScale(
+    value.document.measurement,
+    isLengthUnit,
+  );
+  const forceMeasurement = parseMeasurementScale(
     value.document.forceMeasurement,
+    isForceUnit,
   );
   const document = {
     width: numberOr(value.document.width, defaultDocument.width),
@@ -141,16 +143,6 @@ function numberOr(value: unknown, fallback: number): number {
 
 function stringOr(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
-}
-
-function parseMeasurement(value: unknown): DiagramMeasurement | undefined {
-  return parseMeasurementScale(value, isLengthUnit);
-}
-
-function parseForceMeasurement(
-  value: unknown,
-): DiagramForceMeasurement | undefined {
-  return parseMeasurementScale(value, isForceUnit);
 }
 
 function parseMeasurementScale<Unit extends string>(

@@ -1238,21 +1238,20 @@ export function arrowMagnitudeLabel(
   object: LineObject,
   forceMeasurement?: DiagramForceMeasurement | null,
 ): string | null {
-  if (object.type !== "arrow" || !isCalibratedMeasurement(forceMeasurement)) {
-    return null;
-  }
-  return formatDimensionValue(lineMetrics(object).length, forceMeasurement);
+  return arrowMagnitudeLabelLayout(object, forceMeasurement)?.text ?? null;
 }
 
 export function arrowMagnitudeLabelLayout(
   object: LineObject,
   forceMeasurement?: DiagramForceMeasurement | null,
 ): { x: number; y: number; text: string } | null {
-  const text = arrowMagnitudeLabel(object, forceMeasurement);
-  if (text === null) return null;
+  if (object.type !== "arrow" || !isCalibratedMeasurement(forceMeasurement)) {
+    return null;
+  }
 
   const [x1, y1, x2, y2] = object.points;
   const { dx, dy, length } = lineMetrics(object);
+  const text = formatDimensionValue(length, forceMeasurement);
   // Offset the label perpendicular to the shaft so it sits beside the arrow.
   const normal =
     length > 0 ? { x: dy / length, y: -dx / length } : { x: 0, y: -1 };
@@ -1260,12 +1259,17 @@ export function arrowMagnitudeLabelLayout(
     x: (x1 + x2) / 2 + normal.x * ARROW_MAGNITUDE_LABEL_OFFSET,
     y: (y1 + y2) / 2 + normal.y * ARROW_MAGNITUDE_LABEL_OFFSET,
   });
-  const textWidth = text.length * DIMENSION_FONT_SIZE * 0.62;
   return {
-    x: anchor.x - textWidth / 2,
+    x: anchor.x - dimensionTextWidth(text) / 2,
     y: anchor.y - DIMENSION_FONT_SIZE / 2,
     text,
   };
+}
+
+// Approximates rendered label width from the character count; Konva and the
+// SVG export have no synchronous text metrics at layout time.
+function dimensionTextWidth(text: string): number {
+  return text.length * DIMENSION_FONT_SIZE * 0.62;
 }
 
 type DimensionSegment = {
@@ -1286,7 +1290,7 @@ export function dimensionGuide(
   measurement?: DiagramMeasurement | null,
 ): DimensionGuide {
   const text = dimensionLabel(object, dimension, measurement);
-  const textWidth = text.length * DIMENSION_FONT_SIZE * 0.62;
+  const textWidth = dimensionTextWidth(text);
   const halfGap = textWidth / 2 + DIMENSION_TEXT_GAP_PADDING;
 
   if (dimension === "width") {
