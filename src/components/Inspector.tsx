@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Copy, Ruler, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type Dispatch } from "react";
 import { EditorAction } from "../model/editorReducer";
 import {
+  DiagramForceMeasurement,
   DiagramMeasurement,
   DiagramObject,
   DiagramStyle,
@@ -15,6 +16,7 @@ type Props = {
   selected: DiagramObject | null;
   copiedStyle: DiagramStyle | null;
   measurement?: DiagramMeasurement;
+  forceMeasurement?: DiagramForceMeasurement;
   dispatch: Dispatch<EditorAction>;
 };
 
@@ -22,6 +24,7 @@ export function Inspector({
   selected,
   copiedStyle,
   measurement,
+  forceMeasurement,
   dispatch,
 }: Props) {
   if (!selected) {
@@ -103,6 +106,23 @@ export function Inspector({
           </>
         ) : null}
       </div>
+
+      {selected.type === "arrow" && forceMeasurement && line ? (
+        <>
+          <h3>Force</h3>
+          <p className="muted compact">{forceHint(forceMeasurement)}</p>
+          <div className="field-grid dimension-fields">
+            <DimensionNumberField
+              label={forceFieldLabel(forceMeasurement)}
+              value={pixelsToDimensionValue(line.length, forceMeasurement)}
+              step={0.01}
+              onCommit={(value) =>
+                dispatch({ type: "updateSelectedMagnitude", value })
+              }
+            />
+          </div>
+        </>
+      ) : null}
 
       {selected.type === "text" ? (
         <label className="field full">
@@ -280,6 +300,19 @@ function dimensionFieldLabel(
   return isCalibratedMeasurement(measurement)
     ? `${base} (${measurement.unit})`
     : base;
+}
+
+function forceFieldLabel(forceMeasurement: DiagramForceMeasurement) {
+  return isCalibratedMeasurement(forceMeasurement)
+    ? `Magnitude (${forceMeasurement.unit})`
+    : "Magnitude";
+}
+
+function forceHint(forceMeasurement: DiagramForceMeasurement) {
+  if (!isCalibratedMeasurement(forceMeasurement)) {
+    return `Enter the first force magnitude to calibrate the ${forceMeasurement.unit} scale.`;
+  }
+  return `Forces are shown in ${forceMeasurement.unit}.`;
 }
 
 function measurementHint(measurement?: DiagramMeasurement) {

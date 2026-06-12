@@ -25,10 +25,13 @@ import type Konva from "konva";
 import { EditorAction } from "../model/editorReducer";
 import {
   BoxObject,
+  DiagramForceMeasurement,
   DiagramMeasurement,
   DiagramObject,
   EditorState,
   formatDimensionValue,
+  isCalibratedMeasurement,
+  lineMetrics,
   LineObject,
   pixelsToDimensionValue,
   rightTrianglePoints,
@@ -36,6 +39,7 @@ import {
   ShapeDimension,
   sortByLayer,
   UNIT_INDICATOR_LAYOUT,
+  unitIndicatorText,
 } from "../model/diagram";
 import { isShapeTool } from "../App";
 
@@ -75,6 +79,7 @@ const DIMENSION_MIN_ARROW_SEGMENT = 12;
 const DIMENSION_ARROW_POINTER_LENGTH = 9;
 const DIMENSION_ARROW_POINTER_WIDTH = 5;
 const DIMENSION_COLOR = "#1e293b";
+const ARROW_MAGNITUDE_LABEL_OFFSET = 14;
 
 type TriangleObject = Pick<
   BoxObject,
@@ -186,7 +191,10 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
               height={size.height}
               fill="#f8fafc"
             />
-            <UnitIndicator measurement={state.document.measurement} />
+            <UnitIndicator
+              measurement={state.document.measurement}
+              forceMeasurement={state.document.forceMeasurement}
+            />
             {sortByLayer(state.objects).map((object) => (
               <Fragment key={object.id}>
                 <DrawableObject
@@ -219,6 +227,10 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                       ),
                     });
                   }}
+                />
+                <ArrowMagnitudeLabel
+                  object={object}
+                  forceMeasurement={state.document.forceMeasurement}
                 />
               </Fragment>
             ))}
@@ -1173,21 +1185,87 @@ export function dimensionEditValue(
 
 type UnitIndicatorProps = {
   measurement?: DiagramMeasurement | null;
+  forceMeasurement?: DiagramForceMeasurement | null;
 };
 
-export function UnitIndicator({ measurement }: UnitIndicatorProps) {
-  if (!measurement) return null;
+export function UnitIndicator({
+  measurement,
+  forceMeasurement,
+}: UnitIndicatorProps) {
+  const text = unitIndicatorText(measurement, forceMeasurement);
+  if (!text) return null;
   return (
     <Text
       name="unit-indicator"
       x={UNIT_INDICATOR_LAYOUT.margin}
       y={UNIT_INDICATOR_LAYOUT.margin}
-      text={`Units: ${measurement.unit}`}
+      text={text}
       fontSize={UNIT_INDICATOR_LAYOUT.fontSize}
       fill={UNIT_INDICATOR_LAYOUT.color}
       listening={false}
     />
   );
+}
+
+type ArrowMagnitudeLabelProps = {
+  object: DiagramObject;
+  forceMeasurement?: DiagramForceMeasurement | null;
+};
+
+export function ArrowMagnitudeLabel({
+  object,
+  forceMeasurement,
+}: ArrowMagnitudeLabelProps) {
+  if (object.type !== "arrow") return null;
+  const layout = arrowMagnitudeLabelLayout(object, forceMeasurement);
+  if (!layout) return null;
+  return (
+    <Text
+      name={`arrow-${object.id}-magnitude-label`}
+      x={layout.x}
+      y={layout.y}
+      text={layout.text}
+      fontSize={DIMENSION_FONT_SIZE}
+      fill={DIMENSION_COLOR}
+      listening={false}
+    />
+  );
+}
+
+// Arrows only carry a magnitude label once the force scale is calibrated;
+// before that they render exactly as they did without force support.
+export function arrowMagnitudeLabel(
+  object: LineObject,
+  forceMeasurement?: DiagramForceMeasurement | null,
+): string | null {
+  if (object.type !== "arrow" || !isCalibratedMeasurement(forceMeasurement)) {
+    return null;
+  }
+  return formatDimensionValue(lineMetrics(object).length, forceMeasurement);
+}
+
+export function arrowMagnitudeLabelLayout(
+  object: LineObject,
+  forceMeasurement?: DiagramForceMeasurement | null,
+): { x: number; y: number; text: string } | null {
+  const text = arrowMagnitudeLabel(object, forceMeasurement);
+  if (text === null) return null;
+
+  const [x1, y1, x2, y2] = object.points;
+  const { dx, dy, length } = lineMetrics(object);
+  // Offset the label perpendicular to the shaft so it sits beside the arrow.
+  const normal =
+    length > 0 ? { x: dy / length, y: -dx / length } : { x: 0, y: -1 };
+  const anchor = rotateLocalPoint(object, {
+    x: (x1 + x2) / 2 + normal.x * ARROW_MAGNITUDE_LABEL_OFFSET,
+    y: (y1 + y2) / 2 + normal.y * ARROW_MAGNITUDE_LABEL_OFFSET,
+  });
+  const textWidth = text.length * DIMENSION_FONT_SIZE * 0.62;
+  return {
+    x: anchor.x - textWidth / 2,
+    y: anchor.y - DIMENSION_FONT_SIZE / 2,
+    text,
+  };
 }
 
 type DimensionSegment = {

@@ -4,7 +4,11 @@ import type Konva from "konva";
 import { createDiagramObject, rightTrianglePoints } from "../model/diagram";
 import type { BoxObject, DiagramObject, LineObject } from "../model/diagram";
 import type { TextObject } from "./EditorCanvas";
+import { parseProject, serializeProject } from "../io/project";
 import {
+  ArrowMagnitudeLabel,
+  arrowMagnitudeLabel,
+  arrowMagnitudeLabelLayout,
   canvasPointerAction,
   dimensionEditCommitAction,
   dimensionEditValue,
@@ -762,6 +766,27 @@ describe("dimension helpers", () => {
     expect(indicator!.getAttribute("text")).toBe("Units: mm");
   });
 
+  it("announces the force unit in the indicator, alone or with the length unit", () => {
+    const { container, rerender } = render(
+      <UnitIndicator forceMeasurement={{ unit: "N", pixelsPerUnit: null }} />,
+    );
+
+    expect(
+      container.querySelector('[name="unit-indicator"]')!.getAttribute("text"),
+    ).toBe("Force: N");
+
+    rerender(
+      <UnitIndicator
+        measurement={{ unit: "mm", pixelsPerUnit: 4 }}
+        forceMeasurement={{ unit: "kN", pixelsPerUnit: 1.8 }}
+      />,
+    );
+
+    expect(
+      container.querySelector('[name="unit-indicator"]')!.getAttribute("text"),
+    ).toBe("Units: mm | Force: kN");
+  });
+
   it("commits an edited dimension value for the selected shape", () => {
     const rectangle = createDiagramObject(
       { type: "rectangle", x: 0, y: 0, id: "rect" },
@@ -790,6 +815,118 @@ describe("dimension helpers", () => {
       null,
     );
     expect(dimensionEditCommitAction(null, "rect", "width", "320")).toBe(null);
+  });
+});
+
+describe("arrow magnitude labels", () => {
+  function arrow(x = 12, y = 24) {
+    const object = createDiagramObject({ type: "arrow", x, y, id: "arrow" }, 0);
+    if (object.type !== "arrow") throw new Error("expected arrow");
+    return object;
+  }
+
+  it("shows no label before the force scale is calibrated", () => {
+    expect(arrowMagnitudeLabel(arrow())).toBeNull();
+    expect(
+      arrowMagnitudeLabel(arrow(), { unit: "N", pixelsPerUnit: null }),
+    ).toBeNull();
+    expect(
+      arrowMagnitudeLabelLayout(arrow(), { unit: "N", pixelsPerUnit: null }),
+    ).toBeNull();
+
+    const { container } = render(
+      <ArrowMagnitudeLabel
+        object={arrow()}
+        forceMeasurement={{ unit: "N", pixelsPerUnit: null }}
+      />,
+    );
+    expect(
+      container.querySelector('[name="arrow-arrow-magnitude-label"]'),
+    ).toBeNull();
+  });
+
+  it("never labels plain lines", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 12, y: 24, id: "line" },
+      0,
+    ) as LineObject;
+
+    expect(
+      arrowMagnitudeLabel(line, { unit: "N", pixelsPerUnit: 1.8 }),
+    ).toBeNull();
+    expect(
+      arrowMagnitudeLabelLayout(line, { unit: "N", pixelsPerUnit: 1.8 }),
+    ).toBeNull();
+  });
+
+  it("labels calibrated arrows with magnitude and force unit beside the shaft", () => {
+    // 180 px at 1.8 px/N is 100 N.
+    const layout = arrowMagnitudeLabelLayout(arrow(), {
+      unit: "N",
+      pixelsPerUnit: 1.8,
+    });
+
+    expect(layout).not.toBeNull();
+    expect(layout!.text).toBe("100 N");
+    // Above the horizontal shaft (y = 24), roughly centered on the midpoint
+    // at global x = 102.
+    expect(layout!.y).toBeLessThan(24);
+    expect(layout!.y).toBeGreaterThan(24 - 40);
+    expect(layout!.x).toBeLessThan(102);
+    expect(layout!.x + layout!.text.length * 12 * 0.62).toBeGreaterThan(102);
+  });
+
+  it("follows the arrow rotation when placing the label", () => {
+    const rotated = { ...arrow(), rotation: 90 };
+
+    const layout = arrowMagnitudeLabelLayout(rotated, {
+      unit: "N",
+      pixelsPerUnit: 1.8,
+    });
+
+    // Rotating 90 degrees moves the midpoint to (12, 114) and flips the
+    // label offset to the +x side of the shaft.
+    expect(layout!.text).toBe("100 N");
+    expect(layout!.y).toBeCloseTo(114 - 6, 5);
+    expect(layout!.x + layout!.text.length * 12 * 0.31).toBeCloseTo(12 + 14, 5);
+  });
+
+  it("renders calibrated labels onto the canvas layer", () => {
+    const { container } = render(
+      <ArrowMagnitudeLabel
+        object={arrow()}
+        forceMeasurement={{ unit: "lbf", pixelsPerUnit: 0.9 }}
+      />,
+    );
+
+    const label = container.querySelector(
+      '[name="arrow-arrow-magnitude-label"]',
+    );
+    expect(label).not.toBeNull();
+    expect(label!.getAttribute("text")).toBe("200 lbf");
+  });
+
+  it("derives identical labels after a project save and reload", () => {
+    const object = arrow();
+    object.points = [0, 0, 90, 120];
+    const document = {
+      width: 1280,
+      height: 800,
+      title: "Forces",
+      measurement: { unit: "in" as const, pixelsPerUnit: 30 },
+      forceMeasurement: { unit: "kN" as const, pixelsPerUnit: 1.5 },
+    };
+
+    const reloaded = parseProject(serializeProject([object], document));
+    const reloadedArrow = reloaded.objects[0];
+    if (reloadedArrow.type !== "arrow") throw new Error("expected arrow");
+
+    expect(
+      arrowMagnitudeLabel(reloadedArrow, reloaded.document.forceMeasurement),
+    ).toBe(arrowMagnitudeLabel(object, document.forceMeasurement));
+    expect(
+      arrowMagnitudeLabel(reloadedArrow, reloaded.document.forceMeasurement),
+    ).toBe("100 kN");
   });
 });
 

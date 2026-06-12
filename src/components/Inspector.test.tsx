@@ -223,6 +223,179 @@ describe("Inspector dimensions", () => {
   });
 });
 
+describe("Inspector force magnitudes", () => {
+  function arrow() {
+    const object = createDiagramObject(
+      { type: "arrow", x: 0, y: 0, id: "arrow" },
+      0,
+    );
+    if (object.type !== "arrow") throw new Error("expected arrow");
+    return object;
+  }
+
+  it("keeps arrows unchanged while no force unit is set", () => {
+    render(
+      <Inspector selected={arrow()} copiedStyle={null} dispatch={vi.fn()} />,
+    );
+
+    expect(screen.queryByText("Force")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Magnitude/)).not.toBeInTheDocument();
+  });
+
+  it("never shows a force field for lines or shapes", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 0, y: 0, id: "line" },
+      0,
+    );
+
+    render(
+      <Inspector
+        selected={line}
+        copiedStyle={null}
+        forceMeasurement={{ unit: "N", pixelsPerUnit: 1.8 }}
+        dispatch={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("Force")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Magnitude/)).not.toBeInTheDocument();
+  });
+
+  it("prompts for force calibration once a unit is set but unscaled", () => {
+    render(
+      <Inspector
+        selected={arrow()}
+        copiedStyle={null}
+        forceMeasurement={{ unit: "kN", pixelsPerUnit: null }}
+        dispatch={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Enter the first force magnitude to calibrate the kN scale.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Magnitude")).toBeInTheDocument();
+  });
+
+  it("shows the calibrated magnitude and dispatches the entered value on blur", () => {
+    const dispatch = vi.fn();
+    render(
+      <Inspector
+        selected={arrow()}
+        copiedStyle={null}
+        forceMeasurement={{ unit: "N", pixelsPerUnit: 1.8 }}
+        dispatch={dispatch}
+      />,
+    );
+
+    expect(screen.getByText("Forces are shown in N.")).toBeInTheDocument();
+    const field = screen.getByLabelText("Magnitude (N)");
+    // The default arrow is 180 px long, so at 1.8 px/N it carries 100 N.
+    expect(field).toHaveValue(100);
+
+    fireEvent.change(field, { target: { value: "200" } });
+    fireEvent.blur(field);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "updateSelectedMagnitude",
+      value: 200,
+    });
+  });
+
+  it("buffers magnitude keystrokes and commits exactly once on Enter", () => {
+    const dispatch = vi.fn();
+    render(
+      <Inspector
+        selected={arrow()}
+        copiedStyle={null}
+        forceMeasurement={{ unit: "N", pixelsPerUnit: null }}
+        dispatch={dispatch}
+      />,
+    );
+
+    const field = screen.getByLabelText("Magnitude");
+    for (const partial of ["1", "10", "100"]) {
+      fireEvent.change(field, { target: { value: partial } });
+    }
+    expect(dispatch).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+
+    fireEvent.blur(field);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("calibrates from the final typed magnitude only, without resizing the arrow", () => {
+    let latest!: EditorState;
+    render(<ForceCalibrationHarness onState={(state) => (latest = state)} />);
+
+    const initialPoints = arrowPointsOf(latest, "arrow");
+    expect(latest.document.forceMeasurement).toEqual({
+      unit: "N",
+      pixelsPerUnit: null,
+    });
+
+    const field = screen.getByLabelText("Magnitude");
+    for (const partial of ["9", "90"]) {
+      fireEvent.change(field, { target: { value: partial } });
+    }
+
+    expect(latest.document.forceMeasurement).toEqual({
+      unit: "N",
+      pixelsPerUnit: null,
+    });
+
+    fireEvent.blur(field);
+
+    expect(latest.document.forceMeasurement?.unit).toBe("N");
+    expect(latest.document.forceMeasurement?.pixelsPerUnit).toBeCloseTo(2, 10);
+    expect(arrowPointsOf(latest, "arrow")).toEqual(initialPoints);
+  });
+});
+
+function ForceCalibrationHarness({
+  onState,
+}: {
+  onState: (state: EditorState) => void;
+}) {
+  const [state, dispatch] = useReducer(editorReducer, undefined, () => {
+    let next = initialEditorState();
+    next = editorReducer(next, {
+      type: "createObject",
+      shape: "arrow",
+      x: 0,
+      y: 0,
+      id: "arrow",
+    });
+    next = editorReducer(next, { type: "setForceUnit", unit: "N" });
+    return next;
+  });
+  onState(state);
+  const selected =
+    state.objects.find((object) => object.id === state.selectedId) ?? null;
+  return (
+    <Inspector
+      selected={selected}
+      copiedStyle={state.copiedStyle}
+      measurement={state.document.measurement}
+      forceMeasurement={state.document.forceMeasurement}
+      dispatch={dispatch}
+    />
+  );
+}
+
+function arrowPointsOf(state: EditorState, id: string) {
+  const object = state.objects.find((candidate) => candidate.id === id);
+  if (!object || object.type !== "arrow") throw new Error("expected arrow");
+  return [...object.points];
+}
+
 function CalibrationHarness({
   onState,
 }: {

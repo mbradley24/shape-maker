@@ -23,8 +23,10 @@ import { EditorCanvas, StageHandle } from "./components/EditorCanvas";
 import { Inspector } from "./components/Inspector";
 import { editorReducer } from "./model/editorReducer";
 import {
+  FORCE_UNITS,
   initialEditorState,
   isCalibratedMeasurement,
+  isForceUnit,
   isLengthUnit,
   LENGTH_UNITS,
   ShapeType,
@@ -133,11 +135,13 @@ export function App() {
         state.document.width,
         state.document.height,
         state.document.measurement,
+        state.document.forceMeasurement,
       );
       await saveTextFile("shape-maker-svg", "diagram.svg", svg);
     });
   }, [
     runFileTask,
+    state.document.forceMeasurement,
     state.document.height,
     state.document.measurement,
     state.document.width,
@@ -263,6 +267,41 @@ export function App() {
               {state.document.measurement.unit}
             </span>
           ) : null}
+          <label className="unit-select">
+            Force
+            <select
+              aria-label="Diagram force unit"
+              value={state.document.forceMeasurement?.unit ?? ""}
+              disabled={isCalibratedMeasurement(
+                state.document.forceMeasurement,
+              )}
+              title={
+                isCalibratedMeasurement(state.document.forceMeasurement)
+                  ? "Force unit is locked after the scale is calibrated"
+                  : "Set the diagram force unit"
+              }
+              onChange={(event) =>
+                dispatch({
+                  type: "setForceUnit",
+                  unit: isForceUnit(event.target.value)
+                    ? event.target.value
+                    : null,
+                })
+              }
+            >
+              <option value="">none</option>
+              {FORCE_UNITS.map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
+            </select>
+          </label>
+          {state.document.forceMeasurement ? (
+            <span className="unit-indicator" title="Diagram force unit">
+              {state.document.forceMeasurement.unit}
+            </span>
+          ) : null}
           <button
             className="command"
             onClick={loadProject}
@@ -297,6 +336,7 @@ export function App() {
           selected={selected}
           copiedStyle={state.copiedStyle}
           measurement={state.document.measurement}
+          forceMeasurement={state.document.forceMeasurement}
           dispatch={dispatch}
         />
       </section>
