@@ -1153,3 +1153,83 @@ describe("line length dimensions", () => {
     });
   });
 });
+
+describe("dimension visibility toggle", () => {
+  it("defaults to showing dimensions", () => {
+    const state = initialEditorState();
+    expect(state.showDimensions).toBe(true);
+  });
+
+  it("toggles showDimensions flag back and forth", () => {
+    const state = initialEditorState();
+    expect(state.showDimensions).toBe(true);
+
+    const hidden = editorReducer(state, { type: "toggleDimensionsVisibility" });
+    expect(hidden.showDimensions).toBe(false);
+
+    const shown = editorReducer(hidden, { type: "toggleDimensionsVisibility" });
+    expect(shown.showDimensions).toBe(true);
+  });
+
+  it("does not mutate per-shape dimensions arrays when toggling visibility", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id: "rect",
+    });
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "width",
+      visible: true,
+    });
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "height",
+      visible: true,
+    });
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "line",
+      x: 100,
+      y: 100,
+      id: "line",
+    });
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: true,
+    });
+
+    const objectsBeforeJson = JSON.stringify(state.objects);
+
+    const hidden = editorReducer(state, { type: "toggleDimensionsVisibility" });
+    expect(JSON.stringify(hidden.objects)).toBe(objectsBeforeJson);
+
+    const shown = editorReducer(hidden, { type: "toggleDimensionsVisibility" });
+    expect(JSON.stringify(shown.objects)).toBe(objectsBeforeJson);
+  });
+
+  it("does not mark the diagram dirty when toggling visibility", () => {
+    let state = initialEditorState();
+    expect(state.dirty).toBe(false);
+
+    state = editorReducer(state, { type: "toggleDimensionsVisibility" });
+    expect(state.dirty).toBe(false);
+  });
+
+  it("resets showDimensions to true when loading a project", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, { type: "toggleDimensionsVisibility" });
+    expect(state.showDimensions).toBe(false);
+
+    state = editorReducer(state, {
+      type: "loadProject",
+      document: state.document,
+      objects: [],
+    });
+    expect(state.showDimensions).toBe(true);
+  });
+});
