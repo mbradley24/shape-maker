@@ -117,10 +117,10 @@ function verticalCandidates(
     spanTo: Math.max(draggedBounds.bottom, otherBounds.bottom),
   };
 
-  if (dragged.type === "line" || dragged.type === "arrow") {
+  if (isLineLike(dragged)) {
     if (lineOrientation(dragged) !== "vertical") return [];
     // Only lines snap to rectangle-like sides (not to other lines).
-    if (other.type === "line" || other.type === "arrow") return [];
+    if (isLineLike(other)) return [];
     return [
       {
         draggedValue: draggedBounds.left,
@@ -135,7 +135,7 @@ function verticalCandidates(
     ];
   }
 
-  if (other.type === "line" || other.type === "arrow") return [];
+  if (isLineLike(other)) return [];
 
   // Ellipse centers snap only to other ellipse centers.
   if (dragged.type === "ellipse" && other.type === "ellipse") {
@@ -174,9 +174,9 @@ function horizontalCandidates(
     spanTo: Math.max(draggedBounds.right, otherBounds.right),
   };
 
-  if (dragged.type === "line" || dragged.type === "arrow") {
+  if (isLineLike(dragged)) {
     if (lineOrientation(dragged) !== "horizontal") return [];
-    if (other.type === "line" || other.type === "arrow") return [];
+    if (isLineLike(other)) return [];
     return [
       {
         draggedValue: draggedBounds.top,
@@ -191,7 +191,7 @@ function horizontalCandidates(
     ];
   }
 
-  if (other.type === "line" || other.type === "arrow") return [];
+  if (isLineLike(other)) return [];
 
   if (dragged.type === "ellipse" && other.type === "ellipse") {
     return [

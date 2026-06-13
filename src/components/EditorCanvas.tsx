@@ -397,7 +397,7 @@ function DrawableObject({
         event.target.x(),
         event.target.y(),
       );
-      setSnapGuides([]);
+      setSnapGuides((prev) => (prev.length === 0 ? prev : []));
       dispatch({
         type: "move",
         id: object.id,
@@ -1025,8 +1025,9 @@ export function snappedNodePosition(
   guides: GuideLine[];
 } {
   const candidate = draggedObjectPositionPatch(object, nodeX, nodeY);
-  const others = objects.filter((other) => other.id !== object.id);
-  const snapped = resolveSnap(object, candidate.x, candidate.y, others);
+  // resolveSnap already skips the dragged object by id, so pass the full list
+  // rather than allocating a filtered copy on every drag move.
+  const snapped = resolveSnap(object, candidate.x, candidate.y, objects);
   const node = modelToNodePosition(object, snapped.x, snapped.y);
   return {
     nodeX: node.x,
