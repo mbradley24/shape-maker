@@ -5,8 +5,11 @@ import {
   DiagramMeasurement,
   DiagramObject,
   DiagramStyle,
+  DimensionableObject,
   isCalibratedMeasurement,
+  isDimensionableObject,
   lineMetrics,
+  objectDimensionPixels,
   pixelsToDimensionValue,
   ShapeDimension,
 } from "../model/diagram";
@@ -116,12 +119,12 @@ export function Inspector({
         </label>
       ) : null}
 
-      {isDimensionable(selected) ? (
+      {isDimensionableObject(selected) ? (
         <>
           <h3>Dimensions</h3>
           <p className="muted compact">{measurementHint(measurement)}</p>
           <div className="dimension-toggle-grid">
-            {(["width", "height"] as const).map((dimension) => {
+            {dimensionOptions(selected).map((dimension) => {
               const visible = selected.dimensions?.includes(dimension) ?? false;
               return (
                 <button
@@ -150,7 +153,7 @@ export function Inspector({
                   key={dimension}
                   label={dimensionFieldLabel(selected, dimension, measurement)}
                   value={pixelsToDimensionValue(
-                    selected[dimension],
+                    objectDimensionPixels(selected, dimension) ?? 0,
                     measurement,
                   )}
                   min={measurement ? undefined : 8}
@@ -233,24 +236,21 @@ export function Inspector({
   );
 }
 
-type DimensionableObject = DiagramObject & {
-  type: "rectangle" | "ellipse" | "triangle";
-  width: number;
-  height: number;
-};
-
-function isDimensionable(object: DiagramObject): object is DimensionableObject {
-  return (
-    object.type === "rectangle" ||
-    object.type === "ellipse" ||
-    object.type === "triangle"
-  );
+function dimensionOptions(
+  object: DimensionableObject,
+): readonly ShapeDimension[] {
+  return object.type === "line"
+    ? (["length"] as const)
+    : (["width", "height"] as const);
 }
 
 function dimensionButtonLabel(
   object: DimensionableObject,
   dimension: ShapeDimension,
 ) {
+  if (object.type === "line") {
+    return "Length";
+  }
   if (object.type === "ellipse") {
     return dimension === "width" ? "Width diameter" : "Height diameter";
   }
@@ -265,18 +265,16 @@ function dimensionFieldLabel(
   dimension: ShapeDimension,
   measurement?: DiagramMeasurement,
 ) {
-  const base =
+  const noun =
     object.type === "ellipse"
-      ? dimension === "width"
-        ? "Diameter W"
-        : "Diameter H"
+      ? "Diameter"
       : object.type === "triangle"
-        ? dimension === "width"
-          ? "Leg W"
-          : "Leg H"
-        : dimension === "width"
-          ? "Side W"
-          : "Side H";
+        ? "Leg"
+        : "Side";
+  const base =
+    object.type === "line"
+      ? "Length"
+      : `${noun} ${dimension === "width" ? "W" : "H"}`;
   return isCalibratedMeasurement(measurement)
     ? `${base} (${measurement.unit})`
     : base;

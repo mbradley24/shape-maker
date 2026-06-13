@@ -19,7 +19,7 @@ export type DiagramStyle = {
   fontSize?: number;
 };
 
-export type ShapeDimension = "width" | "height";
+export type ShapeDimension = "width" | "height" | "length";
 
 export const LENGTH_UNITS = ["in", "mm", "cm", "m", "ft"] as const;
 
@@ -267,6 +267,69 @@ export function lineMetrics(object: LineObject): {
     length: Math.hypot(dx, dy),
     angle: Math.atan2(dy, dx) * (180 / Math.PI),
   };
+}
+
+// Unit direction of a line from its metrics; a degenerate zero-length line
+// points along its local +X axis.
+export function lineUnitVector({
+  dx,
+  dy,
+  length,
+}: {
+  dx: number;
+  dy: number;
+  length: number;
+}): { ux: number; uy: number } {
+  return length > 0 ? { ux: dx / length, uy: dy / length } : { ux: 1, uy: 0 };
+}
+
+// Objects that can display dimensions: boxes show width/height, plain lines
+// show their length. Text boxes and arrows never qualify.
+export type DimensionableObject =
+  | (BoxObject & { type: "rectangle" | "ellipse" | "triangle" })
+  | (LineObject & { type: "line" });
+
+export function isDimensionableObject(
+  object: DiagramObject,
+): object is DimensionableObject {
+  return (
+    object.type === "rectangle" ||
+    object.type === "ellipse" ||
+    object.type === "triangle" ||
+    object.type === "line"
+  );
+}
+
+// Current pixel size of an object's dimensionable measurement, or null when
+// the object does not support that dimension (e.g. arrows never have one).
+export function objectDimensionPixels(
+  object: DiagramObject,
+  dimension: ShapeDimension,
+): number | null {
+  if (object.type === "line") {
+    return dimension === "length" ? lineMetrics(object).length : null;
+  }
+  if (
+    (object.type === "rectangle" ||
+      object.type === "ellipse" ||
+      object.type === "triangle") &&
+    (dimension === "width" || dimension === "height")
+  ) {
+    return object[dimension];
+  }
+  return null;
+}
+
+// Resizes a line to the given pixel length while keeping its start point and
+// direction (angle) fixed; only the end point moves. A degenerate zero-length
+// line extends along its local +X axis.
+export function lineResizedToLength(
+  object: LineObject,
+  length: number,
+): LineObject["points"] {
+  const [x1, y1] = object.points;
+  const { ux, uy } = lineUnitVector(lineMetrics(object));
+  return [x1, y1, x1 + ux * length, y1 + uy * length];
 }
 
 export function rightTrianglePoints(object: {

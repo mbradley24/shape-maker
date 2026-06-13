@@ -8,7 +8,9 @@ import {
   initialEditorState,
   isCalibratedMeasurement,
   LengthUnit,
+  lineResizedToLength,
   normalizeLayers,
+  objectDimensionPixels,
   ShapeDimension,
   ShapeType,
   Tool,
@@ -216,9 +218,13 @@ function updateObjectDimension(
   if (!supportsDimension(object, dimension) || !Number.isFinite(value)) {
     return object;
   }
+  const pixels = Math.max(MIN_DIMENSION_VALUE, value);
+  if (object.type === "line") {
+    return { ...object, points: lineResizedToLength(object, pixels) };
+  }
   return {
     ...object,
-    [dimension]: Math.max(MIN_DIMENSION_VALUE, value),
+    [dimension]: pixels,
   } as DiagramObject;
 }
 
@@ -240,14 +246,17 @@ function applySelectedDimensionValue(
 
   const measurement = state.document.measurement;
   if (measurement && !isCalibratedMeasurement(measurement)) {
-    if (value <= 0) return state;
+    const currentPixels = objectDimensionPixels(selected, dimension);
+    if (value <= 0 || currentPixels === null || currentPixels <= 0) {
+      return state;
+    }
     return {
       ...state,
       document: {
         ...state.document,
         measurement: {
           ...measurement,
-          pixelsPerUnit: selected[dimension] / value,
+          pixelsPerUnit: currentPixels / value,
         },
       },
       dirty: true,
@@ -266,11 +275,13 @@ function applySelectedDimensionValue(
 function supportsDimension(
   object: DiagramObject,
   dimension: ShapeDimension,
-): object is DiagramObject & Record<ShapeDimension, number> {
+): boolean {
+  if (object.type === "line") return dimension === "length";
   return (
     (object.type === "rectangle" ||
       object.type === "ellipse" ||
       object.type === "triangle") &&
+    (dimension === "width" || dimension === "height") &&
     dimension in object
   );
 }

@@ -550,3 +550,199 @@ describe("lineMetrics", () => {
     expect(lineMetrics(line).angle).toBeCloseTo(53.13, 2);
   });
 });
+
+describe("line length dimensions", () => {
+  function stateWithLine(points: [number, number, number, number]) {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "line",
+      x: 40,
+      y: 60,
+      id: "line",
+    });
+    state = editorReducer(state, {
+      type: "updateSelected",
+      patch: { points } as Partial<ReturnType<typeof createDiagramObject>>,
+    });
+    return state;
+  }
+
+  it("toggles the persistent length dimension on a plain line", () => {
+    let state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: true,
+    });
+
+    expect(state.objects[0]).toMatchObject({ dimensions: ["length"] });
+
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: false,
+    });
+
+    expect(state.objects[0]?.dimensions).toBeUndefined();
+  });
+
+  it("rejects the length dimension on boxes and width/height on lines", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id: "rect",
+    });
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: true,
+    });
+    expect(state.objects[0]).not.toHaveProperty("dimensions");
+
+    state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "width",
+      visible: true,
+    });
+    expect(state.objects[0]).not.toHaveProperty("dimensions");
+  });
+
+  it("never adds a length dimension to arrows", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "arrow",
+      x: 0,
+      y: 0,
+      id: "arrow",
+    });
+    const before = state.objects[0];
+
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: true,
+    });
+    expect(state.objects[0]).not.toHaveProperty("dimensions");
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 50,
+    });
+    expect(state.objects[0]).toBe(before);
+  });
+
+  it("resizes a line length in raw pixels while keeping start point and angle", () => {
+    let state = stateWithLine([0, 0, 80, 60]);
+    const before = state.objects[0];
+    if (before.type !== "line") throw new Error("expected line");
+    const angleBefore = lineMetrics(before).angle;
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 50,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "line") throw new Error("expected line");
+    expect(after.x).toBe(before.x);
+    expect(after.y).toBe(before.y);
+    expect(after.rotation).toBe(before.rotation);
+    expect(after.points[0]).toBe(0);
+    expect(after.points[1]).toBe(0);
+    expect(after.points[2]).toBeCloseTo(40);
+    expect(after.points[3]).toBeCloseTo(30);
+    expect(lineMetrics(after).length).toBeCloseTo(50);
+    expect(lineMetrics(after).angle).toBeCloseTo(angleBefore);
+  });
+
+  it("moves only the end point when the line start is not at the local origin", () => {
+    let state = stateWithLine([20, 10, 100, 70]);
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 50,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "line") throw new Error("expected line");
+    expect(after.points[0]).toBe(20);
+    expect(after.points[1]).toBe(10);
+    expect(after.points[2]).toBeCloseTo(60);
+    expect(after.points[3]).toBeCloseTo(40);
+  });
+
+  it("clamps line length edits to the minimum pixel size", () => {
+    let state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 1,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "line") throw new Error("expected line");
+    expect(lineMetrics(after).length).toBeCloseTo(8);
+  });
+
+  it("calibrates the scale from the line's current pixel length without resizing it", () => {
+    let state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 5,
+    });
+
+    expect(state.document.measurement).toEqual({
+      unit: "in",
+      pixelsPerUnit: 36,
+    });
+    expect(state.objects[0]).toMatchObject({ points: [0, 0, 180, 0] });
+  });
+
+  it("resizes a line to value times pixels-per-unit once calibrated", () => {
+    let state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 5,
+    });
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 2,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "line") throw new Error("expected line");
+    expect(after.points).toEqual([0, 0, 72, 0]);
+  });
+
+  it("ignores calibration attempts from a degenerate zero-length line", () => {
+    let state = stateWithLine([10, 10, 10, 10]);
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 5,
+    });
+
+    expect(state.document.measurement).toEqual({
+      unit: "in",
+      pixelsPerUnit: null,
+    });
+  });
+});
