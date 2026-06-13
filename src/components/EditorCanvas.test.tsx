@@ -33,6 +33,7 @@ import {
   rectangleResizeHandlePosition,
   RectangleResizeHandles,
   shouldStartInlineTextEdit,
+  snappedNodePosition,
   triangleCornerDragPatch,
   triangleCornerHandlePosition,
   TriangleCornerHandles,
@@ -629,6 +630,63 @@ describe("lineLikeRenderProps", () => {
     expect(lineLikeRenderProps(diagonalArrow).hitStrokeWidth).toBeGreaterThan(
       diagonalArrow.style.strokeWidth,
     );
+  });
+});
+
+describe("snappedNodePosition (Konva glue around resolveSnap)", () => {
+  it("snaps a dragged rectangle node onto an aligned rectangle and reports model coords", () => {
+    const target = createDiagramObject(
+      { type: "rectangle", x: 100, y: 100, id: "a" },
+      0,
+    );
+    const dragged = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "b" },
+      1,
+    );
+    // Drop the node 3px to the right of the target's left edge (within 6px).
+    const result = snappedNodePosition(dragged, [target, dragged], 103, 400);
+    // For rectangles node coords === model coords.
+    expect(result.nodeX).toBe(100);
+    expect(result.modelX).toBe(100);
+    expect(result.guides.some((guide) => guide.axis === "vertical")).toBe(true);
+  });
+
+  it("accounts for the ellipse center offset between node and model coords", () => {
+    const target = createDiagramObject(
+      { type: "ellipse", x: 200, y: 200, id: "e1" },
+      0,
+    );
+    const dragged = createDiagramObject(
+      { type: "ellipse", x: 0, y: 0, id: "e2" },
+      1,
+    );
+    if (dragged.type !== "ellipse" || target.type !== "ellipse") {
+      throw new Error("expected ellipses");
+    }
+    // Ellipse node x/y is the CENTER. Target center is 200 + 120/2 = 260.
+    // Drop the dragged node center 3px off the target center.
+    const result = snappedNodePosition(dragged, [target, dragged], 263, 500);
+    // Node center snaps exactly onto the target center.
+    expect(result.nodeX).toBe(260);
+    // Model x is the top-left: center - width/2.
+    expect(result.modelX).toBe(260 - dragged.width / 2);
+    // Which equals the target's model center alignment requirement.
+    expect(result.modelX + dragged.width / 2).toBe(target.x + target.width / 2);
+  });
+
+  it("tracks the pointer (no snap, no guides) when outside the threshold", () => {
+    const target = createDiagramObject(
+      { type: "rectangle", x: 100, y: 100, id: "a" },
+      0,
+    );
+    const dragged = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "b" },
+      1,
+    );
+    const result = snappedNodePosition(dragged, [target, dragged], 120, 400);
+    expect(result.nodeX).toBe(120);
+    expect(result.modelX).toBe(120);
+    expect(result.guides).toHaveLength(0);
   });
 });
 

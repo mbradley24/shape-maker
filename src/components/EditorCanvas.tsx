@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Dispatch } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import {
   Arrow,
   Circle,
@@ -45,6 +45,7 @@ import {
   UNIT_INDICATOR_LAYOUT,
   unitIndicatorText,
 } from "../model/diagram";
+import { GuideLine, resolveSnap } from "../model/snap";
 import { isShapeTool } from "../App";
 
 export type StageHandle = {
@@ -110,6 +111,7 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
       dimension: ShapeDimension;
       value: string;
     } | null>(null);
+    const [snapGuides, setSnapGuides] = useState<GuideLine[]>([]);
     const dimensionEditObject = dimensionEdit
       ? (state.objects.find(
           (object): object is DimensionableObject =>
@@ -203,10 +205,12 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
               <Fragment key={object.id}>
                 <DrawableObject
                   object={object}
+                  objects={state.objects}
                   selectedId={state.selectedId}
                   hasCopiedStyle={Boolean(state.copiedStyle)}
                   dispatch={dispatch}
                   bindNode={bindNode}
+                  setSnapGuides={setSnapGuides}
                   onRequestTextEdit={() =>
                     setInlineTextEdit({
                       objectId: object.id,
@@ -240,6 +244,20 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                   forceMeasurement={state.document.forceMeasurement}
                 />
               </Fragment>
+            ))}
+            {snapGuides.map((guide, index) => (
+              <Line
+                key={`snap-guide-${index}`}
+                name="snap-guide"
+                points={
+                  guide.axis === "vertical"
+                    ? [guide.x, guide.from, guide.x, guide.to]
+                    : [guide.from, guide.y, guide.to, guide.y]
+                }
+                stroke="#ec4899"
+                strokeWidth={1}
+                listening={false}
+              />
             ))}
             {selectedLineLike ? (
               <LineEndpointHandles
@@ -326,19 +344,23 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
 
 type DrawableProps = {
   object: DiagramObject;
+  objects: DiagramObject[];
   selectedId: string | null;
   hasCopiedStyle: boolean;
   dispatch: Dispatch<EditorAction>;
   bindNode: (node: Konva.Node | null, object: DiagramObject) => void;
+  setSnapGuides: Dispatch<SetStateAction<GuideLine[]>>;
   onRequestTextEdit: () => void;
 };
 
 function DrawableObject({
   object,
+  objects,
   selectedId,
   hasCopiedStyle,
   dispatch,
   bindNode,
+  setSnapGuides,
   onRequestTextEdit,
 }: DrawableProps) {
   const common = {
@@ -358,16 +380,31 @@ function DrawableObject({
           ? onRequestTextEdit()
           : dispatch({ type: "select", id: object.id }),
     onTap: () => dispatch({ type: "select", id: object.id }),
-    onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) =>
+    onDragMove: (event: Konva.KonvaEventObject<DragEvent>) => {
+      const snapped = snappedNodePosition(
+        object,
+        objects,
+        event.target.x(),
+        event.target.y(),
+      );
+      event.target.position({ x: snapped.nodeX, y: snapped.nodeY });
+      setSnapGuides(snapped.guides);
+    },
+    onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => {
+      const snapped = snappedNodePosition(
+        object,
+        objects,
+        event.target.x(),
+        event.target.y(),
+      );
+      setSnapGuides([]);
       dispatch({
         type: "move",
         id: object.id,
-        ...draggedObjectPositionPatch(
-          object,
-          event.target.x(),
-          event.target.y(),
-        ),
-      }),
+        x: snapped.modelX,
+        y: snapped.modelY,
+      });
+    },
     onTransformEnd: (event: Konva.KonvaEventObject<Event>) => {
       const node = event.target;
       const patch = transformedObjectPatch(object, {
@@ -954,6 +991,50 @@ export function draggedObjectPositionPatch(
   }
 
   return { x, y };
+}
+
+// Inverse of draggedObjectPositionPatch: converts a model top-left position
+// back into the Konva node coordinates for the given object type (ellipses are
+// anchored at their center).
+function modelToNodePosition(
+  object: DiagramObject,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  if (object.type === "ellipse") {
+    return { x: x + object.width / 2, y: y + object.height / 2 };
+  }
+  return { x, y };
+}
+
+// Konva glue around the pure resolveSnap: takes the live node position of the
+// dragged object, resolves the snapped MODEL position against the other
+// objects, and returns both the snapped node coordinates (to reposition the
+// Konva node) and the snapped model coordinates (to commit on drag end), plus
+// the active guide lines.
+export function snappedNodePosition(
+  object: DiagramObject,
+  objects: DiagramObject[],
+  nodeX: number,
+  nodeY: number,
+): {
+  nodeX: number;
+  nodeY: number;
+  modelX: number;
+  modelY: number;
+  guides: GuideLine[];
+} {
+  const candidate = draggedObjectPositionPatch(object, nodeX, nodeY);
+  const others = objects.filter((other) => other.id !== object.id);
+  const snapped = resolveSnap(object, candidate.x, candidate.y, others);
+  const node = modelToNodePosition(object, snapped.x, snapped.y);
+  return {
+    nodeX: node.x,
+    nodeY: node.y,
+    modelX: snapped.x,
+    modelY: snapped.y,
+    guides: snapped.guides,
+  };
 }
 
 export function ellipseRenderProps(object: {

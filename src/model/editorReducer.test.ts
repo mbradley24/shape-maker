@@ -90,6 +90,40 @@ describe("editorReducer", () => {
     });
   });
 
+  it("nudges exactly 1px and 10px from an aligned position without re-snapping", () => {
+    let state = initialEditorState();
+    // Two rectangles sharing the same x (exactly aligned, as after a snap).
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 100,
+      y: 100,
+      id: "a",
+    });
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 100,
+      y: 400,
+      id: "b",
+    });
+    state = editorReducer(state, { type: "select", id: "b" });
+
+    // ArrowRight => exactly +1px, no re-snap back onto A's edge.
+    state = editorReducer(state, { type: "nudgeSelected", dx: 1, dy: 0 });
+    expect(state.objects.find((object) => object.id === "b")).toMatchObject({
+      x: 101,
+      y: 400,
+    });
+
+    // Shift+ArrowRight => exactly +10px.
+    state = editorReducer(state, { type: "nudgeSelected", dx: 10, dy: 0 });
+    expect(state.objects.find((object) => object.id === "b")).toMatchObject({
+      x: 111,
+      y: 400,
+    });
+  });
+
   it("updates dimensions and rotation for the selected object only", () => {
     let state = initialEditorState();
     state = editorReducer(state, {
