@@ -25,17 +25,25 @@ import type Konva from "konva";
 import { EditorAction } from "../model/editorReducer";
 import {
   BoxObject,
+  DiagramForceMeasurement,
   DiagramMeasurement,
   DiagramObject,
+  DimensionableObject,
   EditorState,
   formatDimensionValue,
+  isCalibratedMeasurement,
+  isDimensionableObject,
+  lineMetrics,
   LineObject,
+  lineUnitVector,
+  objectDimensionPixels,
   pixelsToDimensionValue,
   rightTrianglePoints,
   selectedObject,
   ShapeDimension,
   sortByLayer,
   UNIT_INDICATOR_LAYOUT,
+  unitIndicatorText,
 } from "../model/diagram";
 import { isShapeTool } from "../App";
 
@@ -75,6 +83,7 @@ const DIMENSION_MIN_ARROW_SEGMENT = 12;
 const DIMENSION_ARROW_POINTER_LENGTH = 9;
 const DIMENSION_ARROW_POINTER_WIDTH = 5;
 const DIMENSION_COLOR = "#1e293b";
+const ARROW_MAGNITUDE_LABEL_OFFSET = 14;
 
 type TriangleObject = Pick<
   BoxObject,
@@ -186,7 +195,10 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
               height={size.height}
               fill="#f8fafc"
             />
-            <UnitIndicator measurement={state.document.measurement} />
+            <UnitIndicator
+              measurement={state.document.measurement}
+              forceMeasurement={state.document.forceMeasurement}
+            />
             {sortByLayer(state.objects).map((object) => (
               <Fragment key={object.id}>
                 <DrawableObject
@@ -204,6 +216,7 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                 />
                 <DimensionOverlay
                   object={object}
+                  selectedId={state.selectedId}
                   measurement={state.document.measurement}
                   dispatch={dispatch}
                   onEditDimension={(dimension) => {
@@ -219,6 +232,10 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                       ),
                     });
                   }}
+                />
+                <ArrowMagnitudeLabel
+                  object={object}
+                  forceMeasurement={state.document.forceMeasurement}
                 />
               </Fragment>
             ))}
@@ -412,6 +429,7 @@ function DrawableObject({
 
 type DimensionOverlayProps = {
   object: DiagramObject;
+  selectedId: string | null;
   measurement?: DiagramMeasurement;
   dispatch: Dispatch<EditorAction>;
   onEditDimension: (dimension: ShapeDimension) => void;
@@ -419,17 +437,18 @@ type DimensionOverlayProps = {
 
 function DimensionOverlay({
   object,
+  selectedId,
   measurement,
   dispatch,
   onEditDimension,
 }: DimensionOverlayProps) {
-  if (!isDimensionableObject(object) || !object.dimensions?.length) {
-    return null;
-  }
+  if (!isDimensionableObject(object)) return null;
+  const dimensions = visibleObjectDimensions(object, selectedId);
+  if (!dimensions.length) return null;
 
   return (
     <>
-      {object.dimensions.map((dimension) => {
+      {dimensions.map((dimension) => {
         const guide = dimensionGuide(object, dimension, measurement);
         return (
           <Fragment key={`${object.id}-${dimension}-dimension`}>
@@ -1132,18 +1151,23 @@ function triangleCornerLocalPosition(
   }
 }
 
-export type DimensionableObject = BoxObject & {
-  type: "rectangle" | "ellipse" | "triangle";
-};
-
-export function isDimensionableObject(
+// Dimensions to render for an object. Plain lines additionally show their
+// length while selected, even before the persistent toggle is enabled, so
+// selecting a line always reveals its dimension. Arrows never qualify.
+export function visibleObjectDimensions(
   object: DiagramObject,
-): object is DimensionableObject {
-  return (
-    object.type === "rectangle" ||
-    object.type === "ellipse" ||
-    object.type === "triangle"
-  );
+  selectedId: string | null,
+): ShapeDimension[] {
+  if (!isDimensionableObject(object)) return [];
+  const dimensions = object.dimensions ?? [];
+  if (
+    object.type === "line" &&
+    object.id === selectedId &&
+    !dimensions.includes("length")
+  ) {
+    return [...dimensions, "length"];
+  }
+  return dimensions;
 }
 
 export function dimensionLabel(
@@ -1152,7 +1176,7 @@ export function dimensionLabel(
   measurement?: DiagramMeasurement | null,
 ) {
   const text = formatDimensionValue(
-    dimension === "width" ? object.width : object.height,
+    objectDimensionPixels(object, dimension) ?? 0,
     measurement,
   );
   return object.type === "ellipse" ? `⌀${text}` : text;
@@ -1165,7 +1189,7 @@ export function dimensionEditValue(
 ): string {
   return String(
     pixelsToDimensionValue(
-      dimension === "width" ? object.width : object.height,
+      objectDimensionPixels(object, dimension) ?? 0,
       measurement,
     ),
   );
@@ -1173,21 +1197,91 @@ export function dimensionEditValue(
 
 type UnitIndicatorProps = {
   measurement?: DiagramMeasurement | null;
+  forceMeasurement?: DiagramForceMeasurement | null;
 };
 
-export function UnitIndicator({ measurement }: UnitIndicatorProps) {
-  if (!measurement) return null;
+export function UnitIndicator({
+  measurement,
+  forceMeasurement,
+}: UnitIndicatorProps) {
+  const text = unitIndicatorText(measurement, forceMeasurement);
+  if (!text) return null;
   return (
     <Text
       name="unit-indicator"
       x={UNIT_INDICATOR_LAYOUT.margin}
       y={UNIT_INDICATOR_LAYOUT.margin}
-      text={`Units: ${measurement.unit}`}
+      text={text}
       fontSize={UNIT_INDICATOR_LAYOUT.fontSize}
       fill={UNIT_INDICATOR_LAYOUT.color}
       listening={false}
     />
   );
+}
+
+type ArrowMagnitudeLabelProps = {
+  object: DiagramObject;
+  forceMeasurement?: DiagramForceMeasurement | null;
+};
+
+export function ArrowMagnitudeLabel({
+  object,
+  forceMeasurement,
+}: ArrowMagnitudeLabelProps) {
+  if (object.type !== "arrow") return null;
+  const layout = arrowMagnitudeLabelLayout(object, forceMeasurement);
+  if (!layout) return null;
+  return (
+    <Text
+      name={`arrow-${object.id}-magnitude-label`}
+      x={layout.x}
+      y={layout.y}
+      text={layout.text}
+      fontSize={DIMENSION_FONT_SIZE}
+      fill={DIMENSION_COLOR}
+      listening={false}
+    />
+  );
+}
+
+// Arrows only carry a magnitude label once the force scale is calibrated;
+// before that they render exactly as they did without force support.
+export function arrowMagnitudeLabel(
+  object: LineObject,
+  forceMeasurement?: DiagramForceMeasurement | null,
+): string | null {
+  return arrowMagnitudeLabelLayout(object, forceMeasurement)?.text ?? null;
+}
+
+export function arrowMagnitudeLabelLayout(
+  object: LineObject,
+  forceMeasurement?: DiagramForceMeasurement | null,
+): { x: number; y: number; text: string } | null {
+  if (object.type !== "arrow" || !isCalibratedMeasurement(forceMeasurement)) {
+    return null;
+  }
+
+  const [x1, y1, x2, y2] = object.points;
+  const { dx, dy, length } = lineMetrics(object);
+  const text = formatDimensionValue(length, forceMeasurement);
+  // Offset the label perpendicular to the shaft so it sits beside the arrow.
+  const normal =
+    length > 0 ? { x: dy / length, y: -dx / length } : { x: 0, y: -1 };
+  const anchor = rotateLocalPoint(object, {
+    x: (x1 + x2) / 2 + normal.x * ARROW_MAGNITUDE_LABEL_OFFSET,
+    y: (y1 + y2) / 2 + normal.y * ARROW_MAGNITUDE_LABEL_OFFSET,
+  });
+  return {
+    x: anchor.x - dimensionTextWidth(text) / 2,
+    y: anchor.y - DIMENSION_FONT_SIZE / 2,
+    text,
+  };
+}
+
+// Approximates rendered label width from the character count; Konva and the
+// SVG export have no synchronous text metrics at layout time.
+function dimensionTextWidth(text: string): number {
+  return text.length * DIMENSION_FONT_SIZE * 0.62;
 }
 
 type DimensionSegment = {
@@ -1208,8 +1302,12 @@ export function dimensionGuide(
   measurement?: DiagramMeasurement | null,
 ): DimensionGuide {
   const text = dimensionLabel(object, dimension, measurement);
-  const textWidth = text.length * DIMENSION_FONT_SIZE * 0.62;
+  const textWidth = dimensionTextWidth(text);
   const halfGap = textWidth / 2 + DIMENSION_TEXT_GAP_PADDING;
+
+  if (object.type === "line") {
+    return lineLengthDimensionGuide(object, text, textWidth, halfGap);
+  }
 
   if (dimension === "width") {
     const lineY = -DIMENSION_OFFSET;
@@ -1266,6 +1364,59 @@ export function dimensionGuide(
       x: lineX - DIMENSION_TEXT_GAP_PADDING - textWidth,
       y: mid - DIMENSION_FONT_SIZE / 2,
     },
+  });
+}
+
+// SolidWorks-style length dimension for a plain line: extension lines at both
+// endpoints perpendicular to the line, a dimension line offset parallel to
+// it, and the value label rotated to read along the line.
+function lineLengthDimensionGuide(
+  object: LineObject & { type: "line" },
+  text: string,
+  textWidth: number,
+  halfGap: number,
+): DimensionGuide {
+  const [x1, y1] = object.points;
+  const metrics = lineMetrics(object);
+  const { length, angle } = metrics;
+  const { ux, uy } = lineUnitVector(metrics);
+  // Normal on the label side of the line (above a left-to-right line).
+  const nx = uy;
+  const ny = -ux;
+  const at = (along: number, offset: number) => ({
+    x: x1 + ux * along + nx * offset,
+    y: y1 + uy * along + ny * offset,
+  });
+  const mid = length / 2;
+  const textFitsInline = mid - halfGap >= DIMENSION_MIN_ARROW_SEGMENT;
+
+  return globalDimensionGuide(object, text, object.rotation + angle, {
+    extensions: [
+      {
+        start: at(0, DIMENSION_EXTENSION_GAP),
+        end: at(0, DIMENSION_OFFSET + DIMENSION_EXTENSION_OVERSHOOT),
+      },
+      {
+        start: at(length, DIMENSION_EXTENSION_GAP),
+        end: at(length, DIMENSION_OFFSET + DIMENSION_EXTENSION_OVERSHOOT),
+      },
+    ],
+    arrows: [
+      {
+        start: at(textFitsInline ? mid - halfGap : mid, DIMENSION_OFFSET),
+        end: at(0, DIMENSION_OFFSET),
+      },
+      {
+        start: at(textFitsInline ? mid + halfGap : mid, DIMENSION_OFFSET),
+        end: at(length, DIMENSION_OFFSET),
+      },
+    ],
+    label: at(
+      mid - textWidth / 2,
+      textFitsInline
+        ? DIMENSION_OFFSET + DIMENSION_FONT_SIZE / 2
+        : DIMENSION_OFFSET + DIMENSION_FONT_SIZE + 6,
+    ),
   });
 }
 

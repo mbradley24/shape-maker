@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import type Konva from "konva";
-import { createDiagramObject, rightTrianglePoints } from "../model/diagram";
+import {
+  createDiagramObject,
+  isDimensionableObject,
+  rightTrianglePoints,
+} from "../model/diagram";
 import type { BoxObject, DiagramObject, LineObject } from "../model/diagram";
 import type { TextObject } from "./EditorCanvas";
+import { parseProject, serializeProject } from "../io/project";
 import {
+  ArrowMagnitudeLabel,
+  arrowMagnitudeLabel,
+  arrowMagnitudeLabelLayout,
   canvasPointerAction,
   dimensionEditCommitAction,
   dimensionEditValue,
@@ -16,6 +24,7 @@ import {
   inlineTextEditCommitAction,
   inlineTextEditorStyle,
   isCanvasSurfaceTarget,
+  visibleObjectDimensions,
   lineEndpointDragPatch,
   lineEndpointHandlePosition,
   LineEndpointHandles,
@@ -762,6 +771,27 @@ describe("dimension helpers", () => {
     expect(indicator!.getAttribute("text")).toBe("Units: mm");
   });
 
+  it("announces the force unit in the indicator, alone or with the length unit", () => {
+    const { container, rerender } = render(
+      <UnitIndicator forceMeasurement={{ unit: "N", pixelsPerUnit: null }} />,
+    );
+
+    expect(
+      container.querySelector('[name="unit-indicator"]')!.getAttribute("text"),
+    ).toBe("Force: N");
+
+    rerender(
+      <UnitIndicator
+        measurement={{ unit: "mm", pixelsPerUnit: 4 }}
+        forceMeasurement={{ unit: "kN", pixelsPerUnit: 1.8 }}
+      />,
+    );
+
+    expect(
+      container.querySelector('[name="unit-indicator"]')!.getAttribute("text"),
+    ).toBe("Units: mm | Force: kN");
+  });
+
   it("commits an edited dimension value for the selected shape", () => {
     const rectangle = createDiagramObject(
       { type: "rectangle", x: 0, y: 0, id: "rect" },
@@ -790,6 +820,118 @@ describe("dimension helpers", () => {
       null,
     );
     expect(dimensionEditCommitAction(null, "rect", "width", "320")).toBe(null);
+  });
+});
+
+describe("arrow magnitude labels", () => {
+  function arrow(x = 12, y = 24) {
+    const object = createDiagramObject({ type: "arrow", x, y, id: "arrow" }, 0);
+    if (object.type !== "arrow") throw new Error("expected arrow");
+    return object;
+  }
+
+  it("shows no label before the force scale is calibrated", () => {
+    expect(arrowMagnitudeLabel(arrow())).toBeNull();
+    expect(
+      arrowMagnitudeLabel(arrow(), { unit: "N", pixelsPerUnit: null }),
+    ).toBeNull();
+    expect(
+      arrowMagnitudeLabelLayout(arrow(), { unit: "N", pixelsPerUnit: null }),
+    ).toBeNull();
+
+    const { container } = render(
+      <ArrowMagnitudeLabel
+        object={arrow()}
+        forceMeasurement={{ unit: "N", pixelsPerUnit: null }}
+      />,
+    );
+    expect(
+      container.querySelector('[name="arrow-arrow-magnitude-label"]'),
+    ).toBeNull();
+  });
+
+  it("never labels plain lines", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 12, y: 24, id: "line" },
+      0,
+    ) as LineObject;
+
+    expect(
+      arrowMagnitudeLabel(line, { unit: "N", pixelsPerUnit: 1.8 }),
+    ).toBeNull();
+    expect(
+      arrowMagnitudeLabelLayout(line, { unit: "N", pixelsPerUnit: 1.8 }),
+    ).toBeNull();
+  });
+
+  it("labels calibrated arrows with magnitude and force unit beside the shaft", () => {
+    // 180 px at 1.8 px/N is 100 N.
+    const layout = arrowMagnitudeLabelLayout(arrow(), {
+      unit: "N",
+      pixelsPerUnit: 1.8,
+    });
+
+    expect(layout).not.toBeNull();
+    expect(layout!.text).toBe("100 N");
+    // Above the horizontal shaft (y = 24), roughly centered on the midpoint
+    // at global x = 102.
+    expect(layout!.y).toBeLessThan(24);
+    expect(layout!.y).toBeGreaterThan(24 - 40);
+    expect(layout!.x).toBeLessThan(102);
+    expect(layout!.x + layout!.text.length * 12 * 0.62).toBeGreaterThan(102);
+  });
+
+  it("follows the arrow rotation when placing the label", () => {
+    const rotated = { ...arrow(), rotation: 90 };
+
+    const layout = arrowMagnitudeLabelLayout(rotated, {
+      unit: "N",
+      pixelsPerUnit: 1.8,
+    });
+
+    // Rotating 90 degrees moves the midpoint to (12, 114) and flips the
+    // label offset to the +x side of the shaft.
+    expect(layout!.text).toBe("100 N");
+    expect(layout!.y).toBeCloseTo(114 - 6, 5);
+    expect(layout!.x + layout!.text.length * 12 * 0.31).toBeCloseTo(12 + 14, 5);
+  });
+
+  it("renders calibrated labels onto the canvas layer", () => {
+    const { container } = render(
+      <ArrowMagnitudeLabel
+        object={arrow()}
+        forceMeasurement={{ unit: "lbf", pixelsPerUnit: 0.9 }}
+      />,
+    );
+
+    const label = container.querySelector(
+      '[name="arrow-arrow-magnitude-label"]',
+    );
+    expect(label).not.toBeNull();
+    expect(label!.getAttribute("text")).toBe("200 lbf");
+  });
+
+  it("derives identical labels after a project save and reload", () => {
+    const object = arrow();
+    object.points = [0, 0, 90, 120];
+    const document = {
+      width: 1280,
+      height: 800,
+      title: "Forces",
+      measurement: { unit: "in" as const, pixelsPerUnit: 30 },
+      forceMeasurement: { unit: "kN" as const, pixelsPerUnit: 1.5 },
+    };
+
+    const reloaded = parseProject(serializeProject([object], document));
+    const reloadedArrow = reloaded.objects[0];
+    if (reloadedArrow.type !== "arrow") throw new Error("expected arrow");
+
+    expect(
+      arrowMagnitudeLabel(reloadedArrow, reloaded.document.forceMeasurement),
+    ).toBe(arrowMagnitudeLabel(object, document.forceMeasurement));
+    expect(
+      arrowMagnitudeLabel(reloadedArrow, reloaded.document.forceMeasurement),
+    ).toBe("100 kN");
   });
 });
 
@@ -1141,5 +1283,152 @@ describe("shape handle styling", () => {
       expect(handle.getAttribute("radius")).toBe("6");
       expect(handle.getAttribute("stroke-width")).toBe("2");
     }
+  });
+});
+
+describe("line length dimension helpers", () => {
+  function makeLine(points: LineObject["points"], x = 10, y = 20) {
+    const line = createDiagramObject({ type: "line", x, y, id: "line" }, 0);
+    if (line.type !== "line") throw new Error("expected line");
+    return { ...line, type: "line" as const, points };
+  }
+
+  it("treats plain lines as dimensionable but never arrows", () => {
+    const line = makeLine([0, 0, 180, 0]);
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+
+    expect(isDimensionableObject(line)).toBe(true);
+    expect(isDimensionableObject(arrow)).toBe(false);
+  });
+
+  it("shows the length dimension for a selected line without a toggle", () => {
+    const line = makeLine([0, 0, 180, 0]);
+
+    expect(visibleObjectDimensions(line, "line")).toEqual(["length"]);
+    expect(visibleObjectDimensions(line, null)).toEqual([]);
+    expect(visibleObjectDimensions(line, "other")).toEqual([]);
+  });
+
+  it("keeps a toggled length dimension visible when the line is deselected", () => {
+    const line = makeLine([0, 0, 180, 0]);
+    line.dimensions = ["length"];
+
+    expect(visibleObjectDimensions(line, null)).toEqual(["length"]);
+    expect(visibleObjectDimensions(line, "line")).toEqual(["length"]);
+  });
+
+  it("never reveals dimensions for a selected arrow", () => {
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+
+    expect(visibleObjectDimensions(arrow, "arrow")).toEqual([]);
+  });
+
+  it("does not add dimensions to boxes just because they are selected", () => {
+    const rectangle = createDiagramObject(
+      { type: "rectangle", x: 0, y: 0, id: "rect" },
+      0,
+    );
+
+    expect(visibleObjectDimensions(rectangle, "rect")).toEqual([]);
+  });
+
+  it("renders a horizontal line dimension like a rectangle width dimension", () => {
+    const line = makeLine([0, 0, 180, 0], 10, 20);
+
+    const guide = dimensionGuide(line, "length");
+
+    expect(guide.text).toBe("180");
+    expect(guide.extensions[0].start.x).toBeCloseTo(10);
+    expect(guide.extensions[0].start.y).toBeCloseTo(16);
+    expect(guide.extensions[0].end.x).toBeCloseTo(10);
+    expect(guide.extensions[0].end.y).toBeCloseTo(-16);
+    expect(guide.extensions[1].start.x).toBeCloseTo(190);
+    expect(guide.extensions[1].start.y).toBeCloseTo(16);
+    expect(guide.arrows[0].end.x).toBeCloseTo(10);
+    expect(guide.arrows[0].end.y).toBeCloseTo(-8);
+    expect(guide.arrows[1].end.x).toBeCloseTo(190);
+    expect(guide.arrows[1].end.y).toBeCloseTo(-8);
+    expect(guide.arrows[0].start.x).toBeLessThan(guide.arrows[1].start.x);
+    expect(guide.label.rotation).toBeCloseTo(0);
+  });
+
+  it("keeps the dimension guide parallel to a diagonal line", () => {
+    const line = makeLine([0, 0, 80, 60], 100, 200);
+
+    const guide = dimensionGuide(line, "length");
+
+    // Unit vector (0.8, 0.6); offset normal is (0.6, -0.8).
+    expect(guide.text).toBe("100");
+    expect(guide.extensions[0].start.x).toBeCloseTo(100 + 0.6 * 4);
+    expect(guide.extensions[0].start.y).toBeCloseTo(200 - 0.8 * 4);
+    expect(guide.extensions[0].end.x).toBeCloseTo(100 + 0.6 * 36);
+    expect(guide.extensions[0].end.y).toBeCloseTo(200 - 0.8 * 36);
+    expect(guide.arrows[0].end.x).toBeCloseTo(100 + 0.6 * 28);
+    expect(guide.arrows[0].end.y).toBeCloseTo(200 - 0.8 * 28);
+    expect(guide.arrows[1].end.x).toBeCloseTo(180 + 0.6 * 28);
+    expect(guide.arrows[1].end.y).toBeCloseTo(260 - 0.8 * 28);
+    expect(guide.label.rotation).toBeCloseTo(36.87, 1);
+  });
+
+  it("adds the object rotation to the dimension label angle", () => {
+    const line = makeLine([0, 0, 80, 60], 100, 200);
+    line.rotation = 15;
+
+    const guide = dimensionGuide(line, "length");
+
+    expect(guide.label.rotation).toBeCloseTo(51.87, 1);
+  });
+
+  it("labels line lengths with the calibrated unit and edits in unit values", () => {
+    const line = makeLine([0, 0, 180, 0]);
+    const measurement = { unit: "in", pixelsPerUnit: 180 / 5.25 } as const;
+
+    expect(dimensionLabel(line, "length", measurement)).toBe("5.25 in");
+    expect(dimensionGuide(line, "length", measurement).text).toBe("5.25 in");
+    expect(dimensionEditValue(line, "length", measurement)).toBe("5.25");
+  });
+
+  it("falls back to rounded pixel lengths while no scale is calibrated", () => {
+    const line = makeLine([0, 0, 80, 60]);
+
+    expect(dimensionLabel(line, "length")).toBe("100");
+    expect(dimensionEditValue(line, "length")).toBe("100");
+    expect(
+      dimensionLabel(line, "length", { unit: "in", pixelsPerUnit: null }),
+    ).toBe("100");
+    expect(
+      dimensionEditValue(line, "length", { unit: "in", pixelsPerUnit: null }),
+    ).toBe("100");
+  });
+
+  it("commits double-click length edits for the selected line only", () => {
+    const line = makeLine([0, 0, 180, 0]);
+
+    expect(dimensionEditCommitAction(line, "line", "length", "240")).toEqual({
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 240,
+    });
+    expect(dimensionEditCommitAction(line, "other", "length", "240")).toBe(
+      null,
+    );
+    expect(dimensionEditCommitAction(line, "line", "length", "abc")).toBe(null);
+  });
+
+  it("never commits length edits for arrows", () => {
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 10, y: 20, id: "arrow" },
+      0,
+    );
+
+    expect(dimensionEditCommitAction(arrow, "arrow", "length", "240")).toBe(
+      null,
+    );
   });
 });

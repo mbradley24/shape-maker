@@ -681,6 +681,269 @@ describe("measurement units and scale calibration", () => {
   });
 });
 
+describe("force units and magnitude calibration", () => {
+  function stateWithArrow(id = "arrow") {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "arrow",
+      x: 0,
+      y: 0,
+      id,
+    });
+    return state;
+  }
+
+  function arrowPoints(
+    state: ReturnType<typeof initialEditorState>,
+    id: string,
+  ) {
+    const arrow = state.objects.find((object) => object.id === id);
+    if (!arrow || arrow.type !== "arrow") throw new Error("expected arrow");
+    return arrow.points;
+  }
+
+  it("sets the global force unit without calibrating a scale or touching the length unit", () => {
+    let state = stateWithArrow();
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+
+    expect(state.document.forceMeasurement).toEqual({
+      unit: "N",
+      pixelsPerUnit: null,
+    });
+    expect(state.document.measurement).toBeUndefined();
+    expect(state.dirty).toBe(true);
+  });
+
+  it("allows switching the force unit or clearing it before calibration", () => {
+    let state = stateWithArrow();
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+    state = editorReducer(state, { type: "setForceUnit", unit: "lbf" });
+
+    expect(state.document.forceMeasurement).toEqual({
+      unit: "lbf",
+      pixelsPerUnit: null,
+    });
+
+    state = editorReducer(state, { type: "setForceUnit", unit: null });
+    expect(state.document.forceMeasurement).toBeUndefined();
+  });
+
+  it("ignores magnitude edits while no force unit is set", () => {
+    const state = stateWithArrow();
+
+    const next = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+
+    expect(next).toBe(state);
+    expect(arrowPoints(next, "arrow")).toEqual([0, 0, 180, 0]);
+  });
+
+  it("calibrates the force scale from the first magnitude without resizing", () => {
+    let state = stateWithArrow();
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+
+    expect(arrowPoints(state, "arrow")).toEqual([0, 0, 180, 0]);
+    expect(state.document.forceMeasurement?.unit).toBe("N");
+    expect(state.document.forceMeasurement?.pixelsPerUnit).toBeCloseTo(
+      180 / 100,
+      10,
+    );
+  });
+
+  it("resizes subsequent magnitude entries proportionally on the calibrated scale", () => {
+    let state = stateWithArrow("first");
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "arrow",
+      x: 0,
+      y: 300,
+      id: "second",
+    });
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 200,
+    });
+
+    const firstLength = Math.hypot(
+      arrowPoints(state, "first")[2] - arrowPoints(state, "first")[0],
+      arrowPoints(state, "first")[3] - arrowPoints(state, "first")[1],
+    );
+    const second = arrowPoints(state, "second");
+    const secondLength = Math.hypot(
+      second[2] - second[0],
+      second[3] - second[1],
+    );
+
+    expect(firstLength).toBe(180);
+    expect(secondLength).toBeCloseTo(360, 10);
+    expect(secondLength).toBeCloseTo(firstLength * 2, 10);
+    expect(state.document.forceMeasurement?.pixelsPerUnit).toBeCloseTo(1.8, 10);
+  });
+
+  it("preserves the start point and direction when resizing a magnitude", () => {
+    let state = stateWithArrow();
+    state = editorReducer(state, {
+      type: "updateSelected",
+      patch: { points: [10, 20, 40, 60] },
+    });
+    state = editorReducer(state, { type: "setForceUnit", unit: "kN" });
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+
+    const before = state.objects[0];
+    if (before.type !== "arrow") throw new Error("expected arrow");
+    const angleBefore = lineMetrics(before).angle;
+
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 25,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "arrow") throw new Error("expected arrow");
+    expect(after.x).toBe(before.x);
+    expect(after.y).toBe(before.y);
+    expect(after.points[0]).toBe(10);
+    expect(after.points[1]).toBe(20);
+    expect(lineMetrics(after).angle).toBeCloseTo(angleBefore, 10);
+    // 50 px was calibrated to 100 kN, so 25 kN is exactly 12.5 px.
+    expect(lineMetrics(after).length).toBeCloseTo(12.5, 10);
+    expect(after.points[2]).toBeCloseTo(17.5, 10);
+    expect(after.points[3]).toBeCloseTo(30, 10);
+  });
+
+  it("ignores non-positive magnitudes before and after calibration", () => {
+    let state = stateWithArrow();
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+    const uncalibrated = state;
+
+    state = editorReducer(state, { type: "updateSelectedMagnitude", value: 0 });
+    expect(state).toBe(uncalibrated);
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: -50,
+    });
+    expect(state).toBe(uncalibrated);
+    expect(state.document.forceMeasurement?.pixelsPerUnit).toBeNull();
+
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+    const calibrated = state;
+    state = editorReducer(state, { type: "updateSelectedMagnitude", value: 0 });
+    expect(state).toBe(calibrated);
+  });
+
+  it("locks the force unit once the scale is calibrated", () => {
+    let state = stateWithArrow();
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+    const calibrated = state;
+
+    state = editorReducer(state, { type: "setForceUnit", unit: "lbf" });
+    expect(state).toBe(calibrated);
+
+    state = editorReducer(state, { type: "setForceUnit", unit: null });
+    expect(state).toBe(calibrated);
+  });
+
+  it("ignores magnitude edits when the selection is not an arrow", () => {
+    let state = stateWithArrow();
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "line",
+      x: 0,
+      y: 0,
+      id: "line",
+    });
+    const withLineSelected = state;
+
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+
+    expect(state).toBe(withLineSelected);
+    expect(state.document.forceMeasurement?.pixelsPerUnit).toBeNull();
+  });
+
+  it("cannot calibrate from a zero-length arrow", () => {
+    let state = stateWithArrow();
+    state = editorReducer(state, {
+      type: "updateSelected",
+      patch: { points: [10, 20, 10, 20] },
+    });
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+    const before = state;
+
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 100,
+    });
+
+    expect(state).toBe(before);
+    expect(state.document.forceMeasurement?.pixelsPerUnit).toBeNull();
+  });
+
+  it("keeps the length scale and force scale fully independent", () => {
+    let state = stateWithArrow("arrow");
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id: "rect",
+    });
+
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 5.25,
+    });
+
+    // Length calibration must not create or touch the force scale.
+    expect(state.document.measurement?.pixelsPerUnit).toBeCloseTo(
+      160 / 5.25,
+      10,
+    );
+    expect(state.document.forceMeasurement).toBeUndefined();
+
+    state = editorReducer(state, { type: "setForceUnit", unit: "N" });
+    state = editorReducer(state, { type: "select", id: "arrow" });
+    state = editorReducer(state, {
+      type: "updateSelectedMagnitude",
+      value: 90,
+    });
+
+    // Force calibration must not touch the length scale.
+    expect(state.document.forceMeasurement?.pixelsPerUnit).toBeCloseTo(2, 10);
+    expect(state.document.measurement?.pixelsPerUnit).toBeCloseTo(
+      160 / 5.25,
+      10,
+    );
+  });
+});
+
 describe("lineMetrics", () => {
   it("derives line length and angle from endpoints", () => {
     const line = createDiagramObject(
@@ -692,5 +955,201 @@ describe("lineMetrics", () => {
 
     expect(lineMetrics(line)).toMatchObject({ dx: 3, dy: 4, length: 5 });
     expect(lineMetrics(line).angle).toBeCloseTo(53.13, 2);
+  });
+});
+
+describe("line length dimensions", () => {
+  function stateWithLine(points: [number, number, number, number]) {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "line",
+      x: 40,
+      y: 60,
+      id: "line",
+    });
+    state = editorReducer(state, {
+      type: "updateSelected",
+      patch: { points } as Partial<ReturnType<typeof createDiagramObject>>,
+    });
+    return state;
+  }
+
+  it("toggles the persistent length dimension on a plain line", () => {
+    let state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: true,
+    });
+
+    expect(state.objects[0]).toMatchObject({ dimensions: ["length"] });
+
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: false,
+    });
+
+    expect(state.objects[0]?.dimensions).toBeUndefined();
+  });
+
+  it("rejects the length dimension on boxes and width/height on lines", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id: "rect",
+    });
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: true,
+    });
+    expect(state.objects[0]).not.toHaveProperty("dimensions");
+
+    state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "width",
+      visible: true,
+    });
+    expect(state.objects[0]).not.toHaveProperty("dimensions");
+  });
+
+  it("never adds a length dimension to arrows", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "arrow",
+      x: 0,
+      y: 0,
+      id: "arrow",
+    });
+    const before = state.objects[0];
+
+    state = editorReducer(state, {
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: true,
+    });
+    expect(state.objects[0]).not.toHaveProperty("dimensions");
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 50,
+    });
+    expect(state.objects[0]).toBe(before);
+  });
+
+  it("resizes a line length in raw pixels while keeping start point and angle", () => {
+    let state = stateWithLine([0, 0, 80, 60]);
+    const before = state.objects[0];
+    if (before.type !== "line") throw new Error("expected line");
+    const angleBefore = lineMetrics(before).angle;
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 50,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "line") throw new Error("expected line");
+    expect(after.x).toBe(before.x);
+    expect(after.y).toBe(before.y);
+    expect(after.rotation).toBe(before.rotation);
+    expect(after.points[0]).toBe(0);
+    expect(after.points[1]).toBe(0);
+    expect(after.points[2]).toBeCloseTo(40);
+    expect(after.points[3]).toBeCloseTo(30);
+    expect(lineMetrics(after).length).toBeCloseTo(50);
+    expect(lineMetrics(after).angle).toBeCloseTo(angleBefore);
+  });
+
+  it("moves only the end point when the line start is not at the local origin", () => {
+    let state = stateWithLine([20, 10, 100, 70]);
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 50,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "line") throw new Error("expected line");
+    expect(after.points[0]).toBe(20);
+    expect(after.points[1]).toBe(10);
+    expect(after.points[2]).toBeCloseTo(60);
+    expect(after.points[3]).toBeCloseTo(40);
+  });
+
+  it("clamps line length edits to the minimum pixel size", () => {
+    let state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 1,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "line") throw new Error("expected line");
+    expect(lineMetrics(after).length).toBeCloseTo(8);
+  });
+
+  it("calibrates the scale from the line's current pixel length without resizing it", () => {
+    let state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 5,
+    });
+
+    expect(state.document.measurement).toEqual({
+      unit: "in",
+      pixelsPerUnit: 36,
+    });
+    expect(state.objects[0]).toMatchObject({ points: [0, 0, 180, 0] });
+  });
+
+  it("resizes a line to value times pixels-per-unit once calibrated", () => {
+    let state = stateWithLine([0, 0, 180, 0]);
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 5,
+    });
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 2,
+    });
+
+    const after = state.objects[0];
+    if (after.type !== "line") throw new Error("expected line");
+    expect(after.points).toEqual([0, 0, 72, 0]);
+  });
+
+  it("ignores calibration attempts from a degenerate zero-length line", () => {
+    let state = stateWithLine([10, 10, 10, 10]);
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 5,
+    });
+
+    expect(state.document.measurement).toEqual({
+      unit: "in",
+      pixelsPerUnit: null,
+    });
   });
 });

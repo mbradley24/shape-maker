@@ -300,4 +300,39 @@ describe("App MVP polish", () => {
       screen.getByRole("button", { name: /recalibrate/i }),
     ).toBeInTheDocument();
   });
+
+  it("offers the required force units independently of the length unit", async () => {
+    render(<App />);
+
+    const forceSelect = screen.getByLabelText("Diagram force unit");
+    const options = Array.from(forceSelect.querySelectorAll("option")).map(
+      (option) => option.value,
+    );
+    expect(options).toEqual(["", "N", "kN", "lbf"]);
+    expect(screen.queryByTitle("Diagram force unit")).not.toBeInTheDocument();
+
+    fireEvent.change(forceSelect, { target: { value: "N" } });
+
+    expect(forceSelect).toHaveValue("N");
+    expect(screen.getByTitle("Diagram force unit")).toHaveTextContent("N");
+    // Selecting a force unit must not select a length unit.
+    expect(screen.getByLabelText("Diagram length unit")).toHaveValue("");
+    expect(screen.queryByTitle("Diagram length unit")).not.toBeInTheDocument();
+
+    fileMocks.saveTextFile.mockClear();
+    fireEvent.keyDown(window, { key: "e", metaKey: true, shiftKey: true });
+
+    await waitFor(() =>
+      expect(fileMocks.saveTextFile).toHaveBeenCalledWith(
+        "shape-maker-svg",
+        "diagram.svg",
+        expect.stringContaining("Force: N"),
+      ),
+    );
+    expect(fileMocks.saveTextFile).not.toHaveBeenCalledWith(
+      "shape-maker-svg",
+      "diagram.svg",
+      expect.stringContaining("Units:"),
+    );
+  });
 });
