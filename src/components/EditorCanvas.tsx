@@ -214,25 +214,27 @@ export const EditorCanvas = forwardRef<StageHandle, Props>(
                     })
                   }
                 />
-                <DimensionOverlay
-                  object={object}
-                  selectedId={state.selectedId}
-                  measurement={state.document.measurement}
-                  dispatch={dispatch}
-                  onEditDimension={(dimension) => {
-                    if (!isDimensionableObject(object)) return;
-                    dispatch({ type: "select", id: object.id });
-                    setDimensionEdit({
-                      objectId: object.id,
-                      dimension,
-                      value: dimensionEditValue(
-                        object,
+                {state.showDimensions ? (
+                  <DimensionOverlay
+                    object={object}
+                    selectedId={state.selectedId}
+                    measurement={state.document.measurement}
+                    dispatch={dispatch}
+                    onEditDimension={(dimension) => {
+                      if (!isDimensionableObject(object)) return;
+                      dispatch({ type: "select", id: object.id });
+                      setDimensionEdit({
+                        objectId: object.id,
                         dimension,
-                        state.document.measurement,
-                      ),
-                    });
-                  }}
-                />
+                        value: dimensionEditValue(
+                          object,
+                          dimension,
+                          state.document.measurement,
+                        ),
+                      });
+                    }}
+                  />
+                ) : null}
                 <ArrowMagnitudeLabel
                   object={object}
                   forceMeasurement={state.document.forceMeasurement}

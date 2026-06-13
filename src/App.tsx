@@ -8,6 +8,8 @@ import {
 } from "react";
 import {
   Circle,
+  Eye,
+  EyeOff,
   MousePointer2,
   Paintbrush,
   Ruler,
@@ -235,6 +237,15 @@ export function App() {
             <Square size={16} />
             <span className="plus">+</span>
           </button>
+          <button
+            className={state.showDimensions ? "tool" : "tool active"}
+            onClick={() => dispatch({ type: "toggleDimensionsVisibility" })}
+            title="Show/hide dimensions (Cmd/Ctrl+Shift+D)"
+            aria-label="Show/hide dimensions"
+            aria-pressed={!state.showDimensions}
+          >
+            {state.showDimensions ? <Eye size={18} /> : <EyeOff size={18} />}
+          </button>
         </div>
         <div className="filebar">
           <label className="unit-select">
@@ -408,6 +419,9 @@ export function appShortcutForKey(input: ShortcutInput): AppShortcut | null {
   }
   if (command && !input.shiftKey && key === "d") {
     return { type: "action", action: { type: "duplicateSelected" } };
+  }
+  if (command && input.shiftKey && key === "d") {
+    return { type: "action", action: { type: "toggleDimensionsVisibility" } };
   }
   if (command && !input.shiftKey && key === "e") {
     return { type: "exportPng" };

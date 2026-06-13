@@ -336,3 +336,57 @@ describe("App MVP polish", () => {
     );
   });
 });
+
+describe("dimension visibility toggle", () => {
+  it("maps Cmd/Ctrl+Shift+D to toggleDimensionsVisibility", () => {
+    expect(
+      shortcut({ key: "d", metaKey: true, shiftKey: true }),
+    ).toEqual({
+      type: "action",
+      action: { type: "toggleDimensionsVisibility" },
+    });
+    expect(
+      shortcut({ key: "d", ctrlKey: true, shiftKey: true }),
+    ).toEqual({
+      type: "action",
+      action: { type: "toggleDimensionsVisibility" },
+    });
+  });
+
+  it("does not conflict with Cmd/Ctrl+D (duplicate)", () => {
+    expect(shortcut({ key: "d", metaKey: true })).toEqual({
+      type: "action",
+      action: { type: "duplicateSelected" },
+    });
+  });
+
+  it("toolbar show/hide button has correct aria-pressed and active class", () => {
+    render(<App />);
+
+    const btn = screen.getByRole("button", { name: "Show/hide dimensions" });
+    // Dimensions are shown by default: button is not pressed (not hidden)
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+    expect(btn).not.toHaveClass("active");
+
+    fireEvent.click(btn);
+
+    // After hiding: button should reflect hidden state
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+    expect(btn).toHaveClass("active");
+  });
+
+  it("keyboard shortcut Cmd+Shift+D toggles the toolbar button state", () => {
+    render(<App />);
+
+    const btn = screen.getByRole("button", { name: "Show/hide dimensions" });
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.keyDown(window, { key: "d", metaKey: true, shiftKey: true });
+
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.keyDown(window, { key: "d", metaKey: true, shiftKey: true });
+
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+  });
+});

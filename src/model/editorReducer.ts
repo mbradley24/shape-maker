@@ -57,7 +57,8 @@ export type EditorAction =
   | { type: "sendBackward" }
   | { type: "loadProject"; document: DiagramDocument; objects: DiagramObject[] }
   | { type: "setError"; error: string | null }
-  | { type: "markSaved" };
+  | { type: "markSaved" }
+  | { type: "toggleDimensionsVisibility" };
 
 export function editorReducer(
   state: EditorState,
@@ -239,6 +240,8 @@ export function editorReducer(
       return { ...state, error: action.error };
     case "markSaved":
       return { ...state, dirty: false };
+    case "toggleDimensionsVisibility":
+      return { ...state, showDimensions: !state.showDimensions };
   }
 }
 

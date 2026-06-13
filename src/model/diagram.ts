@@ -85,6 +85,7 @@ export type EditorState = {
   copiedStyle: DiagramStyle | null;
   error: string | null;
   dirty: boolean;
+  showDimensions: boolean;
 };
 
 export type CreateObjectInput = {
@@ -124,6 +125,7 @@ export function initialEditorState(): EditorState {
     copiedStyle: null,
     error: null,
     dirty: false,
+    showDimensions: true,
   };
 }
 
