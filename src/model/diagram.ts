@@ -239,6 +239,24 @@ export function isCalibratedMeasurement<Scale extends MeasurementScale>(
   );
 }
 
+// Millimetres per unit, used to convert a calibrated pixels-per-unit scale
+// when the display unit changes. Display-only: geometry is never rescaled.
+export const UNIT_TO_MM: Record<LengthUnit, number> = {
+  in: 25.4,
+  mm: 1,
+  cm: 10,
+  m: 1000,
+  ft: 304.8,
+};
+
+export function convertPixelsPerUnit(
+  pixelsPerUnit: number,
+  from: LengthUnit,
+  to: LengthUnit,
+): number {
+  return pixelsPerUnit * (UNIT_TO_MM[to] / UNIT_TO_MM[from]);
+}
+
 export function pixelsToDimensionValue(
   pixels: number,
   measurement?: MeasurementScale | null,

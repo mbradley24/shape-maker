@@ -10,6 +10,7 @@ import {
   Circle,
   MousePointer2,
   Paintbrush,
+  Ruler,
   Save,
   Square,
   Type,
@@ -73,6 +74,7 @@ export function App() {
     [state.objects, state.selectedId],
   );
   const isLoading = loadingMessage !== null;
+  const isCalibrated = isCalibratedMeasurement(state.document.measurement);
 
   const runFileTask = useCallback(
     async (
@@ -235,17 +237,49 @@ export function App() {
           </button>
         </div>
         <div className="filebar">
-          <UnitScaleSelect
-            label="Units"
-            name="Diagram length unit"
-            emptyOption="px"
-            units={LENGTH_UNITS}
-            isUnit={isLengthUnit}
-            measurement={state.document.measurement}
-            lockedTitle="Unit is locked after the scale is calibrated"
-            unlockedTitle="Set the diagram length unit"
-            onSelect={(unit) => dispatch({ type: "setMeasurementUnit", unit })}
-          />
+          <label className="unit-select">
+            Units
+            <select
+              aria-label="Diagram length unit"
+              value={state.document.measurement?.unit ?? ""}
+              title={
+                isCalibrated
+                  ? "Switch the display unit; shapes keep their on-screen size"
+                  : "Set the diagram length unit"
+              }
+              onChange={(event) =>
+                dispatch({
+                  type: "setMeasurementUnit",
+                  unit: isLengthUnit(event.target.value)
+                    ? event.target.value
+                    : null,
+                })
+              }
+            >
+              <option value="" disabled={isCalibrated}>
+                px
+              </option>
+              {LENGTH_UNITS.map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
+            </select>
+          </label>
+          {state.document.measurement ? (
+            <span className="unit-indicator" title="Diagram length unit">
+              {state.document.measurement.unit}
+            </span>
+          ) : null}
+          {isCalibrated ? (
+            <button
+              className="command"
+              onClick={() => dispatch({ type: "beginScaleRecalibration" })}
+              title="Recalibrate scale: enter the real value of any shape dimension to set a new scale"
+            >
+              <Ruler size={16} /> Recalibrate
+            </button>
+          ) : null}
           <UnitScaleSelect
             label="Force"
             name="Diagram force unit"

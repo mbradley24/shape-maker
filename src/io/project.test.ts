@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createDiagramObject, defaultDocument } from "../model/diagram";
+import {
+  createDiagramObject,
+  defaultDocument,
+  initialEditorState,
+} from "../model/diagram";
+import { editorReducer } from "../model/editorReducer";
 import { parseProject, serializeProject } from "./project";
 
 describe("project serialization", () => {
@@ -83,6 +88,40 @@ describe("project serialization", () => {
     expect(parsed.document.measurement).toEqual({
       unit: "in",
       pixelsPerUnit: 160 / 5.25,
+    });
+    expect(parsed.objects[0]).toMatchObject({ width: 160, height: 96 });
+  });
+
+  it("restores the switched unit and recalibrated scale after reopening", () => {
+    let state = initialEditorState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "rectangle",
+      x: 0,
+      y: 0,
+      id: "rect",
+    });
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 5.25,
+    });
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "mm" });
+    state = editorReducer(state, { type: "beginScaleRecalibration" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 100,
+    });
+
+    const parsed = parseProject(
+      serializeProject(state.objects, state.document),
+    );
+
+    expect(parsed.document.measurement).toEqual({
+      unit: "mm",
+      pixelsPerUnit: 1.6,
     });
     expect(parsed.objects[0]).toMatchObject({ width: 160, height: 96 });
   });

@@ -43,19 +43,36 @@ vi.mock("./components/EditorCanvas", async () => {
         toPng: () => "data:image/png;base64,shape-maker",
       }));
       return React.createElement(
-        "button",
-        {
-          type: "button",
-          onClick: () =>
-            dispatch({
-              type: "createObject",
-              shape: "rectangle",
-              x: 10,
-              y: 20,
-              id: "mock-rectangle",
-            }),
-        },
-        "Mock canvas",
+        React.Fragment,
+        null,
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            onClick: () =>
+              dispatch({
+                type: "createObject",
+                shape: "rectangle",
+                x: 10,
+                y: 20,
+                id: "mock-rectangle",
+              }),
+          },
+          "Mock canvas",
+        ),
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            onClick: () =>
+              dispatch({
+                type: "updateSelectedDimension",
+                dimension: "width",
+                value: 5.25,
+              }),
+          },
+          "Mock dimension entry",
+        ),
       );
     },
   );
@@ -228,6 +245,60 @@ describe("App MVP polish", () => {
         expect.stringContaining("Units: in"),
       ),
     );
+  });
+
+  function calibrateInches() {
+    // Create and select a rectangle, set the unit, then calibrate the scale
+    // by entering the first dimension value through the mocked canvas.
+    fireEvent.click(screen.getByRole("button", { name: "Mock canvas" }));
+    fireEvent.change(screen.getByLabelText("Diagram length unit"), {
+      target: { value: "in" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mock dimension entry" }),
+    );
+  }
+
+  it("keeps the unit switchable after calibration and locks only px", () => {
+    render(<App />);
+    calibrateInches();
+
+    const select = screen.getByLabelText("Diagram length unit");
+    expect(select).toBeEnabled();
+    expect(screen.getByRole("option", { name: "px" })).toBeDisabled();
+
+    fireEvent.change(select, { target: { value: "mm" } });
+
+    expect(select).toHaveValue("mm");
+    expect(screen.getByTitle("Diagram length unit")).toHaveTextContent("mm");
+  });
+
+  it("shows the recalibration affordance only while a scale is calibrated", () => {
+    render(<App />);
+
+    expect(
+      screen.queryByRole("button", { name: /recalibrate/i }),
+    ).not.toBeInTheDocument();
+
+    calibrateInches();
+    const recalibrate = screen.getByRole("button", { name: /recalibrate/i });
+
+    fireEvent.click(recalibrate);
+
+    // Back in calibration mode: the unit is kept but the scale is cleared,
+    // so the affordance disappears until the next calibration.
+    expect(screen.getByTitle("Diagram length unit")).toHaveTextContent("in");
+    expect(
+      screen.queryByRole("button", { name: /recalibrate/i }),
+    ).not.toBeInTheDocument();
+
+    // Entering a dimension value calibrates a fresh scale.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mock dimension entry" }),
+    );
+    expect(
+      screen.getByRole("button", { name: /recalibrate/i }),
+    ).toBeInTheDocument();
   });
 
   it("offers the required force units independently of the length unit", async () => {

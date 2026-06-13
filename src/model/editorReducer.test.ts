@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createDiagramObject,
   defaultStyle,
+  formatDimensionValue,
   initialEditorState,
   lineMetrics,
   rightTrianglePoints,
@@ -502,7 +503,9 @@ describe("measurement units and scale calibration", () => {
     expect(state.document.measurement?.pixelsPerUnit).toBeNull();
   });
 
-  it("locks the unit once the scale is calibrated", () => {
+  // Issue #41 replaces the #38 unit lock: after calibration the unit stays
+  // switchable (display conversion only); only the px option remains locked.
+  function calibratedInchState() {
     let state = stateWithRectangle();
     state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
     state = editorReducer(state, {
@@ -510,13 +513,154 @@ describe("measurement units and scale calibration", () => {
       dimension: "width",
       value: 5.25,
     });
-    const calibrated = state;
+    return state;
+  }
 
-    state = editorReducer(state, { type: "setMeasurementUnit", unit: "mm" });
+  it("converts the calibrated scale on unit switch without touching geometry", () => {
+    const calibrated = calibratedInchState();
+    expect(formatDimensionValue(160, calibrated.document.measurement)).toBe(
+      "5.25 in",
+    );
+
+    const switched = editorReducer(calibrated, {
+      type: "setMeasurementUnit",
+      unit: "mm",
+    });
+
+    // Pixel geometry must be byte-for-byte unchanged: same objects reference.
+    expect(switched.objects).toBe(calibrated.objects);
+    expect(switched.document.measurement?.unit).toBe("mm");
+    expect(switched.document.measurement?.pixelsPerUnit).toBeCloseTo(
+      160 / 5.25 / 25.4,
+      10,
+    );
+    expect(formatDimensionValue(160, switched.document.measurement)).toBe(
+      "133.35 mm",
+    );
+    // Every other label converts equivalently: the 96 px height read
+    // 3.15 in, and 3.15 in * 25.4 = 80.01 mm.
+    expect(formatDimensionValue(96, switched.document.measurement)).toBe(
+      "80.01 mm",
+    );
+  });
+
+  it("restores the original displayed values when switching the unit back", () => {
+    const calibrated = calibratedInchState();
+    let state = editorReducer(calibrated, {
+      type: "setMeasurementUnit",
+      unit: "mm",
+    });
+    state = editorReducer(state, { type: "setMeasurementUnit", unit: "in" });
+
+    expect(state.document.measurement?.unit).toBe("in");
+    expect(state.document.measurement?.pixelsPerUnit).toBeCloseTo(
+      160 / 5.25,
+      10,
+    );
+    expect(formatDimensionValue(160, state.document.measurement)).toBe(
+      "5.25 in",
+    );
+    expect(state.objects).toBe(calibrated.objects);
+  });
+
+  it("still locks the px option once the scale is calibrated", () => {
+    const calibrated = calibratedInchState();
+
+    let state = editorReducer(calibrated, {
+      type: "setMeasurementUnit",
+      unit: null,
+    });
     expect(state).toBe(calibrated);
 
-    state = editorReducer(state, { type: "setMeasurementUnit", unit: null });
+    state = editorReducer(calibrated, {
+      type: "setMeasurementUnit",
+      unit: "in",
+    });
     expect(state).toBe(calibrated);
+  });
+
+  it("begins recalibration by clearing only the scale, never geometry", () => {
+    const calibrated = calibratedInchState();
+
+    const recalibrating = editorReducer(calibrated, {
+      type: "beginScaleRecalibration",
+    });
+
+    expect(recalibrating.document.measurement).toEqual({
+      unit: "in",
+      pixelsPerUnit: null,
+    });
+    expect(recalibrating.objects).toBe(calibrated.objects);
+    expect(recalibrating.dirty).toBe(true);
+  });
+
+  it("ignores recalibration requests while no scale is calibrated", () => {
+    const pixelState = stateWithRectangle();
+    expect(editorReducer(pixelState, { type: "beginScaleRecalibration" })).toBe(
+      pixelState,
+    );
+
+    const uncalibrated = editorReducer(pixelState, {
+      type: "setMeasurementUnit",
+      unit: "in",
+    });
+    expect(
+      editorReducer(uncalibrated, { type: "beginScaleRecalibration" }),
+    ).toBe(uncalibrated);
+  });
+
+  it("relabels all dimensions proportionally after recalibrating an edge", () => {
+    let state = calibratedInchState();
+    state = editorReducer(state, {
+      type: "createObject",
+      shape: "ellipse",
+      x: 300,
+      y: 0,
+      id: "other",
+    });
+    state = editorReducer(state, { type: "beginScaleRecalibration" });
+    state = editorReducer(state, { type: "select", id: "rect" });
+
+    // Assert the rectangle's 160 px width edge is really 10 in.
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 10,
+    });
+
+    expect(state.document.measurement?.pixelsPerUnit).toBeCloseTo(16, 10);
+    // The asserted edge reads the asserted value; nothing was resized.
+    expect(state.objects.find((object) => object.id === "rect")).toMatchObject({
+      width: 160,
+      height: 96,
+    });
+    expect(formatDimensionValue(160, state.document.measurement)).toBe("10 in");
+    // Other shapes relabel proportionally at the new scale (120 px ellipse).
+    expect(state.objects.find((object) => object.id === "other")).toMatchObject(
+      { width: 120, height: 120 },
+    );
+    expect(formatDimensionValue(120, state.document.measurement)).toBe(
+      "7.5 in",
+    );
+  });
+
+  it("resizes dimension entries with the new scale after recalibration", () => {
+    let state = calibratedInchState();
+    state = editorReducer(state, { type: "beginScaleRecalibration" });
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "width",
+      value: 10,
+    });
+
+    // 3 in at the new 16 px/in scale is 48 px, not 160/5.25 * 3 ≈ 91.4 px.
+    state = editorReducer(state, {
+      type: "updateSelectedDimension",
+      dimension: "height",
+      value: 3,
+    });
+
+    expect(state.objects[0]).toMatchObject({ width: 160, height: 48 });
   });
 
   it("clamps calibrated resizes to the minimum pixel size", () => {

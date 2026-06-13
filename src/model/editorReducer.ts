@@ -1,5 +1,6 @@
 import {
   cloneStyle,
+  convertPixelsPerUnit,
   createDiagramObject,
   DiagramDocument,
   DiagramObject,
@@ -44,6 +45,7 @@ export type EditorAction =
       value: number;
     }
   | { type: "setMeasurementUnit"; unit: LengthUnit | null }
+  | { type: "beginScaleRecalibration" }
   | { type: "setForceUnit"; unit: ForceUnit | null }
   | { type: "updateSelectedMagnitude"; value: number }
   | { type: "updateText"; text: string }
@@ -115,14 +117,44 @@ export function editorReducer(
       if (!state.selectedId) return state;
       return applySelectedDimensionValue(state, action.dimension, action.value);
     case "setMeasurementUnit": {
-      if (isCalibratedMeasurement(state.document.measurement)) return state;
+      const measurement = state.document.measurement;
+      let next: DiagramDocument["measurement"];
+      if (isCalibratedMeasurement(measurement)) {
+        // Once calibrated, the scale must not be silently discarded, so a
+        // switch back to raw pixels (null) is ignored. Switching between real
+        // units only converts the stored scale; geometry is untouched.
+        if (!action.unit || action.unit === measurement.unit) return state;
+        next = {
+          unit: action.unit,
+          pixelsPerUnit: convertPixelsPerUnit(
+            measurement.pixelsPerUnit,
+            measurement.unit,
+            action.unit,
+          ),
+        };
+      } else {
+        next = action.unit
+          ? { unit: action.unit, pixelsPerUnit: null }
+          : undefined;
+      }
+      return {
+        ...state,
+        document: { ...state.document, measurement: next },
+        dirty: true,
+        error: null,
+      };
+    }
+    case "beginScaleRecalibration": {
+      const measurement = state.document.measurement;
+      if (!isCalibratedMeasurement(measurement)) return state;
+      // Clearing the scale re-enters calibration mode: the next dimension
+      // entry asserts a real value for that edge and sets the new scale
+      // without resizing any shape (same path as first calibration).
       return {
         ...state,
         document: {
           ...state.document,
-          measurement: action.unit
-            ? { unit: action.unit, pixelsPerUnit: null }
-            : undefined,
+          measurement: { unit: measurement.unit, pixelsPerUnit: null },
         },
         dirty: true,
         error: null,
