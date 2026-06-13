@@ -163,7 +163,7 @@ function parseDimensions(value: unknown): ShapeDimension[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const dimensions = value.filter(
     (dimension): dimension is ShapeDimension =>
-      dimension === "width" || dimension === "height",
+      dimension === "width" || dimension === "height" || dimension === "length",
   );
   return dimensions.length > 0 ? Array.from(new Set(dimensions)) : undefined;
 }

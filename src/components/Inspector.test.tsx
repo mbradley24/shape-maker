@@ -436,3 +436,105 @@ function objectWidth(state: EditorState, id: string): number {
   if (!object || !("width" in object)) throw new Error("expected box object");
   return object.width;
 }
+
+describe("Inspector line length dimension", () => {
+  it("offers a Length toggle for plain lines and dispatches the toggle action", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 0, y: 0, id: "line" },
+      0,
+    );
+    if (line.type !== "line") throw new Error("expected line");
+
+    const dispatch = vi.fn();
+    render(
+      <Inspector selected={line} copiedStyle={null} dispatch={dispatch} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /length/i }));
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setSelectedDimension",
+      dimension: "length",
+      visible: true,
+    });
+  });
+
+  it("does not offer width or height toggles for lines", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 0, y: 0, id: "line" },
+      0,
+    );
+    if (line.type !== "line") throw new Error("expected line");
+
+    render(<Inspector selected={line} copiedStyle={null} dispatch={vi.fn()} />);
+
+    expect(
+      screen.queryByRole("button", { name: /width side/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /height side/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("edits line length in raw pixels while no unit is set", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 0, y: 0, id: "line" },
+      0,
+    );
+    if (line.type !== "line") throw new Error("expected line");
+    line.points = [0, 0, 80, 60];
+    line.dimensions = ["length"];
+
+    const dispatch = vi.fn();
+    render(
+      <Inspector selected={line} copiedStyle={null} dispatch={dispatch} />,
+    );
+
+    const field = screen.getByLabelText("Length");
+    expect(field).toHaveValue(100);
+
+    fireEvent.change(field, { target: { value: "240" } });
+    fireEvent.blur(field);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "updateSelectedDimension",
+      dimension: "length",
+      value: 240,
+    });
+  });
+
+  it("shows calibrated line lengths in the global unit", () => {
+    const line = createDiagramObject(
+      { type: "line", x: 0, y: 0, id: "line" },
+      0,
+    );
+    if (line.type !== "line") throw new Error("expected line");
+    line.dimensions = ["length"];
+
+    render(
+      <Inspector
+        selected={line}
+        copiedStyle={null}
+        measurement={{ unit: "in", pixelsPerUnit: 180 / 5.25 }}
+        dispatch={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Length (in)")).toHaveValue(5.25);
+  });
+
+  it("offers no dimension controls for arrows", () => {
+    const arrow = createDiagramObject(
+      { type: "arrow", x: 0, y: 0, id: "arrow" },
+      0,
+    );
+    if (arrow.type !== "arrow") throw new Error("expected arrow");
+
+    render(
+      <Inspector selected={arrow} copiedStyle={null} dispatch={vi.fn()} />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /length/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Dimensions")).not.toBeInTheDocument();
+  });
+});
