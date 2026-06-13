@@ -23,10 +23,13 @@ import { EditorCanvas, StageHandle } from "./components/EditorCanvas";
 import { Inspector } from "./components/Inspector";
 import { editorReducer } from "./model/editorReducer";
 import {
+  FORCE_UNITS,
   initialEditorState,
   isCalibratedMeasurement,
+  isForceUnit,
   isLengthUnit,
   LENGTH_UNITS,
+  MeasurementScale,
   ShapeType,
   Tool,
 } from "./model/diagram";
@@ -133,11 +136,13 @@ export function App() {
         state.document.width,
         state.document.height,
         state.document.measurement,
+        state.document.forceMeasurement,
       );
       await saveTextFile("shape-maker-svg", "diagram.svg", svg);
     });
   }, [
     runFileTask,
+    state.document.forceMeasurement,
     state.document.height,
     state.document.measurement,
     state.document.width,
@@ -230,39 +235,28 @@ export function App() {
           </button>
         </div>
         <div className="filebar">
-          <label className="unit-select">
-            Units
-            <select
-              aria-label="Diagram length unit"
-              value={state.document.measurement?.unit ?? ""}
-              disabled={isCalibratedMeasurement(state.document.measurement)}
-              title={
-                isCalibratedMeasurement(state.document.measurement)
-                  ? "Unit is locked after the scale is calibrated"
-                  : "Set the diagram length unit"
-              }
-              onChange={(event) =>
-                dispatch({
-                  type: "setMeasurementUnit",
-                  unit: isLengthUnit(event.target.value)
-                    ? event.target.value
-                    : null,
-                })
-              }
-            >
-              <option value="">px</option>
-              {LENGTH_UNITS.map((unit) => (
-                <option key={unit} value={unit}>
-                  {unit}
-                </option>
-              ))}
-            </select>
-          </label>
-          {state.document.measurement ? (
-            <span className="unit-indicator" title="Diagram length unit">
-              {state.document.measurement.unit}
-            </span>
-          ) : null}
+          <UnitScaleSelect
+            label="Units"
+            name="Diagram length unit"
+            emptyOption="px"
+            units={LENGTH_UNITS}
+            isUnit={isLengthUnit}
+            measurement={state.document.measurement}
+            lockedTitle="Unit is locked after the scale is calibrated"
+            unlockedTitle="Set the diagram length unit"
+            onSelect={(unit) => dispatch({ type: "setMeasurementUnit", unit })}
+          />
+          <UnitScaleSelect
+            label="Force"
+            name="Diagram force unit"
+            emptyOption="none"
+            units={FORCE_UNITS}
+            isUnit={isForceUnit}
+            measurement={state.document.forceMeasurement}
+            lockedTitle="Force unit is locked after the scale is calibrated"
+            unlockedTitle="Set the diagram force unit"
+            onSelect={(unit) => dispatch({ type: "setForceUnit", unit })}
+          />
           <button
             className="command"
             onClick={loadProject}
@@ -297,10 +291,67 @@ export function App() {
           selected={selected}
           copiedStyle={state.copiedStyle}
           measurement={state.document.measurement}
+          forceMeasurement={state.document.forceMeasurement}
           dispatch={dispatch}
         />
       </section>
     </main>
+  );
+}
+
+type UnitScaleSelectProps<Unit extends string> = {
+  label: string;
+  name: string;
+  emptyOption: string;
+  units: readonly Unit[];
+  isUnit: (value: unknown) => value is Unit;
+  measurement: MeasurementScale<Unit> | undefined;
+  lockedTitle: string;
+  unlockedTitle: string;
+  onSelect: (unit: Unit | null) => void;
+};
+
+// One filebar control per measurement scale (length, force): a unit select
+// that locks once the scale is calibrated, plus the active-unit indicator.
+function UnitScaleSelect<Unit extends string>({
+  label,
+  name,
+  emptyOption,
+  units,
+  isUnit,
+  measurement,
+  lockedTitle,
+  unlockedTitle,
+  onSelect,
+}: UnitScaleSelectProps<Unit>) {
+  const locked = isCalibratedMeasurement(measurement);
+  return (
+    <>
+      <label className="unit-select">
+        {label}
+        <select
+          aria-label={name}
+          value={measurement?.unit ?? ""}
+          disabled={locked}
+          title={locked ? lockedTitle : unlockedTitle}
+          onChange={(event) =>
+            onSelect(isUnit(event.target.value) ? event.target.value : null)
+          }
+        >
+          <option value="">{emptyOption}</option>
+          {units.map((unit) => (
+            <option key={unit} value={unit}>
+              {unit}
+            </option>
+          ))}
+        </select>
+      </label>
+      {measurement ? (
+        <span className="unit-indicator" title={name}>
+          {measurement.unit}
+        </span>
+      ) : null}
+    </>
   );
 }
 

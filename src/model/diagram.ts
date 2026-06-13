@@ -25,10 +25,18 @@ export const LENGTH_UNITS = ["in", "mm", "cm", "m", "ft"] as const;
 
 export type LengthUnit = (typeof LENGTH_UNITS)[number];
 
-export type DiagramMeasurement = {
-  unit: LengthUnit;
+export const FORCE_UNITS = ["N", "kN", "lbf"] as const;
+
+export type ForceUnit = (typeof FORCE_UNITS)[number];
+
+export type MeasurementScale<Unit extends string = string> = {
+  unit: Unit;
   pixelsPerUnit: number | null;
 };
+
+export type DiagramMeasurement = MeasurementScale<LengthUnit>;
+
+export type DiagramForceMeasurement = MeasurementScale<ForceUnit>;
 
 export type BaseObject = {
   id: string;
@@ -60,6 +68,7 @@ export type DiagramDocument = {
   height: number;
   title: string;
   measurement?: DiagramMeasurement;
+  forceMeasurement?: DiagramForceMeasurement;
 };
 
 export type DiagramProject = {
@@ -212,9 +221,16 @@ export function isLengthUnit(value: unknown): value is LengthUnit {
   );
 }
 
-export function isCalibratedMeasurement(
-  measurement: DiagramMeasurement | null | undefined,
-): measurement is DiagramMeasurement & { pixelsPerUnit: number } {
+export function isForceUnit(value: unknown): value is ForceUnit {
+  return (
+    typeof value === "string" &&
+    (FORCE_UNITS as readonly string[]).includes(value)
+  );
+}
+
+export function isCalibratedMeasurement<Scale extends MeasurementScale>(
+  measurement: Scale | null | undefined,
+): measurement is Scale & { pixelsPerUnit: number } {
   return Boolean(
     measurement &&
     typeof measurement.pixelsPerUnit === "number" &&
@@ -225,7 +241,7 @@ export function isCalibratedMeasurement(
 
 export function pixelsToDimensionValue(
   pixels: number,
-  measurement?: DiagramMeasurement | null,
+  measurement?: MeasurementScale | null,
 ): number {
   if (!isCalibratedMeasurement(measurement)) {
     return Math.round(pixels);
@@ -235,7 +251,7 @@ export function pixelsToDimensionValue(
 
 export function formatDimensionValue(
   pixels: number,
-  measurement?: DiagramMeasurement | null,
+  measurement?: MeasurementScale | null,
 ): string {
   const value = pixelsToDimensionValue(pixels, measurement);
   return isCalibratedMeasurement(measurement)
@@ -251,6 +267,18 @@ export const UNIT_INDICATOR_LAYOUT = {
   fontSize: 13,
   color: "#1e293b",
 } as const;
+
+// Shared by the on-canvas indicator and the SVG export so both renderings
+// announce the same length/force units in the same format.
+export function unitIndicatorText(
+  measurement?: DiagramMeasurement | null,
+  forceMeasurement?: DiagramForceMeasurement | null,
+): string | null {
+  const parts: string[] = [];
+  if (measurement) parts.push(`Units: ${measurement.unit}`);
+  if (forceMeasurement) parts.push(`Force: ${forceMeasurement.unit}`);
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
 
 export function lineMetrics(object: LineObject): {
   dx: number;
